@@ -1,0 +1,11 @@
+services:
+  fizzhub:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "8780:8780"
+    volumes:
+      - ./config/hub.toml:/etc/fizzmine/hub.toml:ro
+      - fizzhub-data:/var/lib/fizzmine
+volumes:
+  fizzhub-data:

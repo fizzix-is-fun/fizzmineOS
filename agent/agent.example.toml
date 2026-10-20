@@ -1,0 +1,6 @@
+# Copy to /etc/fizzmine/agent.toml on each rig.
+rig = "babyarm"                       # name shown on the dashboard (defaults to the hostname)
+hub_url = "ws://192.168.1.50:8780"    # where the hub runs
+token = "change-me"                   # must match this rig's token in the hub's hub.toml
+interval_s = 5
+wildrig_api_port = 60050              # add `--api-port 60050` to the wildrig command in /usr/local/bin/mine

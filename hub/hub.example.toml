@@ -1,0 +1,7 @@
+# Copy to /etc/fizzmine/hub.toml (or ./config/hub.toml when using docker compose).
+db = "/var/lib/fizzmine/hub.db"
+
+# One line per rig: name = token. Generate a token with: openssl rand -hex 16
+[rigs]
+babyarm = "change-me"
+armadillo = "change-me-too"

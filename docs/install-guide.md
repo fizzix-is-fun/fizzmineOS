@@ -68,7 +68,8 @@ Add `--driver` to the rig command:
 | Option | What it does |
 | --- | --- |
 | `--driver recommended` | Ubuntu's recommended driver for the cards (the default on a fresh rig) |
-| `--driver 580` | that version; open kernel modules on RTX 20-series and newer |
+| `--driver 580` | Ubuntu's package for that branch; open kernel modules on RTX 20-series and newer. Ubuntu sometimes points an old branch at a newer driver (26.04's "610" installs 615) |
+| `--driver 610.43.02` | that exact release from NVIDIA's site, like HiveOS uses. Removes Ubuntu's driver packages first (keeps Docker's GPU support), builds with DKMS so kernel updates keep working, and needs Secure Boot off. If the cards are busy it asks you to reboot and run the command again |
 | `--driver keep` | leave the installed driver alone (the default when one is installed) |
 | `--driver skip` | don't touch drivers at all |
 

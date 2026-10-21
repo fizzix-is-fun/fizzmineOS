@@ -81,6 +81,8 @@ class Agent:
 
     def snapshot(self):
         cards, stats = self.gpus.read(), self.miner.read()
+        if self.fake and not self.runner.running():
+            stats = {"running": False, "miner": "wildrig"}
         attach_to_gpus(cards, stats)
         for g in cards:
             g["oc"] = self.state["oc"].get(g["uuid"])

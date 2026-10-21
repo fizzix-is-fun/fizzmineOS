@@ -14,6 +14,12 @@ SRC=/opt/fizzmine/src
 BRANCH=main TS_KEY=""
 ARGS=("$@")
 
+# git updates this file in place while it runs, and bash reads scripts as it goes, so run from a copy
+if [ -z "${FIZZ_COPY:-}" ] && [ "$(readlink -f "$0")" = "$SRC/hub/setup-hub.sh" ]; then
+  cp "$0" /tmp/fizzmine-setup-hub.sh
+  FIZZ_COPY=1 exec bash /tmp/fizzmine-setup-hub.sh "$@"
+fi
+
 while [ $# -gt 0 ]; do
   case "$1" in
     --tailscale-key) TS_KEY="$2"; shift 2 ;;

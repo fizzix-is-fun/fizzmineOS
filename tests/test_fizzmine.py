@@ -410,3 +410,22 @@ def test_fizz_command_through_the_agent_socket(tmp_path, capsys):
     cli.main(["--socket", sock, "status"])
     assert "r1: stopped, miner stopped" in capsys.readouterr().out
     assert cli.fan_setting("70%") == {"fan_mode": "fixed", "fan_value": 70} and cli.fan_setting("auto") == {"fan_mode": "auto"}
+
+
+def test_power_limit_clamped_to_the_card_range(monkeypatch):
+    import types
+    from fizzagent import gpu
+    calls = []
+    noop = lambda *a: None  # noqa: E731
+    monkeypatch.setattr(gpu, "nv", types.SimpleNamespace(
+        nvmlDeviceGetPowerManagementLimitConstraints=lambda h: (150000, 180000),
+        nvmlDeviceSetPowerManagementLimit=lambda h, mw: calls.append(mw),
+        nvmlDeviceGetPowerManagementDefaultLimit=lambda h: 180000,
+        nvmlDeviceSetGpuLockedClocks=noop, nvmlDeviceResetGpuLockedClocks=noop,
+        nvmlDeviceSetMemoryLockedClocks=noop, nvmlDeviceResetMemoryLockedClocks=noop,
+        nvmlDeviceSetGpcClkVfOffset=noop, nvmlDeviceSetMemClkVfOffset=noop))
+    g = gpu.NvmlGpus.__new__(gpu.NvmlGpus)
+    g.handles = ["h"]
+    assert g.apply_oc(0, {"power_w": 140}) == ["power: 140 W is outside this card's 150-180 W, set 150 W"]
+    assert g.apply_oc(0, {"power_w": 160}) == [] and g.apply_oc(0, {}) == []
+    assert calls == [150000, 160000, 180000]

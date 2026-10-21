@@ -102,8 +102,18 @@ class NvmlGpus:
                 errors.append(f"{field}: {e}")
 
         pl = oc.get("power_w")
-        do("power", lambda: nv.nvmlDeviceSetPowerManagementLimit(
-            h, int(pl * 1000) if pl else nv.nvmlDeviceGetPowerManagementDefaultLimit(h)))
+
+        def set_power():
+            if not pl:
+                return nv.nvmlDeviceSetPowerManagementLimit(h, nv.nvmlDeviceGetPowerManagementDefaultLimit(h))
+            # cards refuse limits outside their range (a 5060 Ti won't go to 140 W): use the nearest one and say so
+            lo, hi = _try(nv.nvmlDeviceGetPowerManagementLimitConstraints, h, default=(0, 10**9))
+            mw = max(lo, min(hi, int(pl * 1000)))
+            nv.nvmlDeviceSetPowerManagementLimit(h, mw)
+            if mw != int(pl * 1000):
+                errors.append(f"power: {pl} W is outside this card's {lo / 1000:g}-{hi / 1000:g} W, set {mw / 1000:g} W")
+
+        do("power", set_power)
         core = oc.get("core_lock_mhz")
         do("core lock", lambda: nv.nvmlDeviceSetGpuLockedClocks(h, core, core) if core else nv.nvmlDeviceResetGpuLockedClocks(h))
         mem = oc.get("mem_lock_mhz")

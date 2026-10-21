@@ -40,8 +40,9 @@
   svg.spark { width:100%; height:40px; margin-top:8px; display:block; }
   .empty, .hint { color:var(--quiet); }
   .hint { font-size:12px; }
-  button.b { background:var(--panel2); color:var(--text); border:1px solid var(--line); padding:5px 10px; border-radius:6px; cursor:pointer; font:inherit; font-size:13px; }
-  button.b:hover { border-color:var(--quiet); }
+  button.b, a.b { text-decoration:none; display:inline-block; }
+  button.b, a.b { background:var(--panel2); color:var(--text); border:1px solid var(--line); padding:5px 10px; border-radius:6px; cursor:pointer; font:inherit; font-size:13px; }
+  button.b:hover, a.b:hover { border-color:var(--quiet); }
   button.b.primary { background:var(--accent); border-color:var(--accent); color:#06121f; font-weight:600; }
   button.b.danger { color:var(--bad); }
   button.b:disabled { opacity:.5; cursor:default; }
@@ -208,6 +209,7 @@ function rigCard(r, hist) {
   const controls = r.online ? `<div class="controls">
       ${a.mode === 'mining' ? btn(r.rig, 'set_mode', 'Switch to AI', '', {mode: 'ai'}) : btn(r.rig, 'set_mode', 'Start mining', 'primary', {mode: 'mining'})}
       ${a.miner_running ? btn(r.rig, 'miner_restart', 'Restart miner') + btn(r.rig, 'miner_stop', 'Stop miner') : ''}
+      <a class="b" href="console.html?rig=${encodeURIComponent(r.rig)}" target="_blank" rel="noopener">Miner console</a>
       <button class="b" data-oc="${esc(r.rig)}">Overclock</button>
       <button class="b" data-ai="${esc(r.rig)}">AI mode settings</button>
       ${btn(r.rig, 'reboot', 'Reboot', 'danger')}

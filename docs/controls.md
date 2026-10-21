@@ -25,13 +25,15 @@ To use it, tick the rigs in the list, leave "start mining" ticked, and click **P
 
 ## Watching the miner
 
-The miner runs in a tmux session on the rig. To watch it live:
+Click **Miner console** on a rig to open its miner output in a new tab, updating every couple of seconds, like the miner window in HiveOS. Scroll up to pause it; scroll back to the bottom to follow again.
+
+The miner runs in a tmux session on the rig, so you can also watch it there:
 
 ```bash
 sudo tmux attach -t miner      # Ctrl+B then D to leave it running
 ```
 
-The log is also written to `/var/log/fizzmine/miner.log`.
+The log is also written to `/var/log/fizzmine/miner.log`. When it passes 20 MB, the next miner start moves it to `miner.log.1`.
 
 ## Overclocking
 

@@ -258,3 +258,40 @@ def test_commands_reach_the_agent_and_come_back(client):
         t.join(timeout=5)
     assert client.post("/api/rigs/r1/cmd", json={"cmd": "rm -rf"}).status_code == 400
     assert client.post("/api/rigs/r1/cmd", json={"cmd": "reboot"}).json()["msg"] == "rig is offline"
+
+
+def test_read_log_follows_and_survives_rotation(tmp_path):
+    from fizzagent.runner import read_log
+    log = tmp_path / "miner.log"
+    assert read_log(None, path=log) == {"text": "", "offset": 0}
+    log.write_text("a" * 100 + "\nstarted\n")
+    first = read_log(None, path=log, tail=8)
+    assert first["text"] == "started\n" and first["offset"] == 109
+    with open(log, "a") as f:
+        f.write("hashrate 93 TH/s\n")
+    assert read_log(first["offset"], path=log)["text"] == "hashrate 93 TH/s\n"
+    log.write_text("new\n")  # rotated: the old offset is past the end
+    assert read_log(500, path=log)["text"] == "new\n"
+
+
+def test_console_reads_the_miner_log(client, tmp_path):
+    import threading
+    from fizzagent.__main__ import Agent
+    agent = Agent({"rig": "r1"}, fake=True, state_path=tmp_path / "state.json")
+    agent.log_path = tmp_path / "miner.log"
+    agent.log_path.write_text("\x1b[32mshare accepted\x1b[0m\n")
+    token = client.post("/api/enroll", json={"key": "joinme", "rig": "r1"}).json()["token"]
+    with client.websocket_connect(f"/ws/agent?rig=r1&token={token}") as ws:
+        ws.send_json({"type": "stats", "gpus": [], "miner": {}})
+
+        def fake_agent():
+            msg = ws.receive_json()
+            ws.send_json({"type": "result", "id": msg["id"], "ok": True, "msg": agent.handle(msg["cmd"], msg["args"])})
+
+        t = threading.Thread(target=fake_agent)
+        t.start()
+        out = client.get("/api/rigs/r1/log").json()
+        t.join(timeout=5)
+    assert out == {"text": "\x1b[32mshare accepted\x1b[0m\n", "offset": 24, "running": False}
+    assert client.get("/api/rigs/r1/log?offset=0").status_code == 503  # rig gone
+    assert client.get("/console.html").status_code == 200

@@ -15,6 +15,7 @@ log = logging.getLogger("fizzagent")
 MINERS_DIR = Path("/opt/fizzmine/miners")
 LOG_FILE = Path("/var/log/fizzmine/miner.log")
 SESSION = "miner"
+LOG_KEEP = 20_000_000  # bytes; on start a bigger log moves to miner.log.1
 
 # Built-in miners: which file to run and how a flight sheet becomes its arguments.
 MINERS = {
@@ -118,6 +119,8 @@ class MinerRunner:
             return "started (fake)"
         binary, cmd = self.command(fs)
         LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+        if LOG_FILE.exists() and LOG_FILE.stat().st_size > LOG_KEEP:
+            LOG_FILE.replace(LOG_FILE.with_suffix(".log.1"))
         line = f"cd {shlex.quote(str(binary.parent))} && {shlex.join(cmd)} 2>&1 | tee -a {LOG_FILE}"
         subprocess.run(["tmux", "new-session", "-d", "-s", SESSION, "-x", "200", "-y", "50", "bash", "-c", line], check=True)
         log.info("miner started: %s", shlex.join(cmd))
@@ -136,3 +139,18 @@ class MinerRunner:
             time.sleep(0.5)
         subprocess.run(["tmux", "kill-session", "-t", SESSION], capture_output=True)
         return "stopped (killed)"
+
+
+def read_log(offset=None, path=None, tail=64_000, chunk=256_000):
+    """New miner output since `offset` (bytes). No offset, or a log that was rotated: the last `tail` bytes."""
+    path = Path(path or LOG_FILE)
+    try:
+        size = path.stat().st_size
+    except OSError:
+        return {"text": "", "offset": 0}
+    if offset is None or offset > size:
+        offset = max(0, size - tail)
+    with open(path, "rb") as f:
+        f.seek(offset)
+        data = f.read(chunk)
+    return {"text": data.decode("utf-8", "replace"), "offset": offset + len(data)}

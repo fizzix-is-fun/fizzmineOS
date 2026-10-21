@@ -126,6 +126,13 @@ EOF
 chmod 600 /etc/fizzmine/agent.toml
 
 cp /opt/fizzmine/agent/fizzagent.service /etc/systemd/system/
+# fizz: control the rig over SSH, even when the hub is down (fizz --help)
+cat > /usr/local/bin/fizz <<'FIZZ'
+#!/bin/bash
+[ "$(id -u)" -eq 0 ] || exec sudo "$0" "$@"
+cd /opt/fizzmine/agent && exec /opt/fizzmine/venv/bin/python -m fizzagent.cli "$@"
+FIZZ
+chmod 755 /usr/local/bin/fizz
 systemctl daemon-reload
 systemctl enable fizzagent >/dev/null 2>&1
 systemctl restart fizzagent

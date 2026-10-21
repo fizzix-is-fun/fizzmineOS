@@ -81,3 +81,24 @@ Under **Alerts**, paste a webhook URL for each channel (in Discord: channel sett
 - **Status channel:** recoveries, rigs coming back online, and a summary of every rig every hour (change or turn off the interval there).
 
 The same tab lists recent events.
+
+## From SSH: the `fizz` command
+
+When you're away and the mini PC is down (or you'd just rather type), SSH into the rig and use `fizz`. It goes through the agent like the dashboard does, so the two never disagree, and the dashboard shows whatever you set as soon as the hub is back.
+
+```bash
+fizz status                      # mode, hashrate, each card's temp, fan, power and OC
+fizz stop | start | restart      # the miner
+fizz ai                          # AI mode: stops the miner, cards to stock
+fizz oc                          # each card's OC
+fizz oc all --pl 140 --core-lock 2685 --core-offset 350 --mem-lock 810
+fizz oc 1 --core-offset 300      # change one setting on GPU 1, keep the rest
+fizz oc 0 --fan 70               # fan: auto, a fixed % like 70, or a target like t65
+fizz oc 0 --reset                # GPU 0 back to stock
+fizz screen                      # the miner's screen (Ctrl+B then D to leave)
+fizz log                         # follow the miner log
+```
+
+It asks for your password once (it runs as root). To reach a rig from outside your home, put the rig on Tailscale: rerun the rig install command with `--tailscale-key <key>`.
+
+Don't use the old `mine`, `ai` and `clocks` commands on a rig the dashboard runs: they'd fight the agent.

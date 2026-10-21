@@ -91,6 +91,7 @@ def fetch_miner(url):
 class MinerRunner:
     def __init__(self, rig, fake=False):
         self.rig, self.fake, self._fake_running = rig, fake, False
+        self.started_at = None
 
     def resolve(self, fs):
         names = MINERS.get(fs.get("miner"), MINERS["custom"])["binaries"]
@@ -119,6 +120,7 @@ class MinerRunner:
             return "miner already running"
         if self.fake:
             self._fake_running = True
+            self.started_at = time.time()
             return "started (fake)"
         binary, cmd = self.command(fs)
         LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
@@ -130,6 +132,7 @@ class MinerRunner:
         cols, rows = SCREEN
         subprocess.run(["tmux", "new-session", "-d", "-s", SESSION, "-x", str(cols), "-y", str(rows), "bash", "-c", line], check=True)
         subprocess.run(["tmux", "pipe-pane", "-o", "-t", SESSION, f"cat >> {shlex.quote(str(LOG_FILE))}"], check=True)
+        self.started_at = time.time()
         log.info("miner started: %s", shlex.join(cmd))
         return "started"
 

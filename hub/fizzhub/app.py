@@ -19,6 +19,7 @@ from fastapi.responses import JSONResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from . import notify
 from .store import Store
 
 log = logging.getLogger("fizzhub")
@@ -30,6 +31,7 @@ with open(cfg_path, "rb") as f:
 static_tokens = cfg.get("rigs", {})  # optional hand-made tokens; enrolled rigs live in the database
 enroll_key = cfg.get("enroll_key", "")
 store = Store(os.environ.get("FIZZHUB_DB", cfg.get("db", "/var/lib/fizzmine/hub.db")))
+notifier = notify.Notifier(store)
 # the agent source the hub hands to new rigs; in Docker it is copied into the image
 agent_dir = Path(os.environ.get("FIZZHUB_AGENT_DIR", Path(__file__).resolve().parents[2] / "agent"))
 RIG_NAME = re.compile(r"[A-Za-z0-9_-]{1,32}")
@@ -38,6 +40,7 @@ SESSION_COOKIE = "fizz_session"
 # paths that work without logging in: the rig installer, enrollment (has its own key), agents (own tokens)
 OPEN_PATHS = ("/api/login", "/api/me", "/api/enroll", "/install.sh", "/agent.tar.gz", "/ws/")
 CMD_TIMEOUT_S = 180  # a flight sheet may download a miner first
+GONE_AFTER_S = 90  # no report for this long: a Discord alert that the rig is offline
 connections = {}  # rig name -> its agent's open WebSocket
 pending = {}      # command id -> future waiting for the agent's result
 
@@ -52,11 +55,39 @@ async def prune_forever():
         await asyncio.sleep(3600)
 
 
+async def check_rigs(seen, last_status, now):
+    """Alerts for rigs that go offline or come back, and the periodic summary. seen: rig -> online, from last time."""
+    for r in rigs():
+        up = r["last_seen"] is not None and now - r["last_seen"] < GONE_AFTER_S
+        was = seen.get(r["rig"])
+        seen[r["rig"]] = up
+        if was is True and not up:
+            await notifier.event(r["rig"], "alert", f"offline: no report for {GONE_AFTER_S // 60}+ minutes")
+        elif was is False and up:
+            await notifier.event(r["rig"], "info", "back online")
+    every = notifier.settings()["status_every_min"]
+    if every and now - last_status >= every * 60:
+        await notifier.send("status", notify.summary(rigs()))
+        return now
+    return last_status
+
+
+async def watch_rigs_forever():
+    seen, last_status = {}, time.time()
+    while True:
+        await asyncio.sleep(30)
+        try:
+            last_status = await check_rigs(seen, last_status, time.time())
+        except Exception:
+            log.exception("rig check")
+
+
 @asynccontextmanager
 async def lifespan(app):
-    task = asyncio.create_task(prune_forever())
+    tasks = [asyncio.create_task(prune_forever()), asyncio.create_task(watch_rigs_forever())]
     yield
-    task.cancel()
+    for t in tasks:
+        t.cancel()
 
 
 app = FastAPI(title="fizzmineOS hub", lifespan=lifespan)
@@ -121,6 +152,8 @@ async def agent_socket(ws: WebSocket, rig: str, token: str):
                 msg["rig"] = rig  # trust the authenticated name, not the payload
                 msg["ts"] = time.time()
                 store.add(msg)
+            elif msg.get("type") == "event" and msg.get("level") in ("alert", "info"):
+                await notifier.event(rig, msg["level"], str(msg.get("msg", ""))[:500])
             elif msg.get("type") == "result" and msg.get("id") in pending:
                 pending.pop(msg["id"]).set_result(msg)
     except WebSocketDisconnect:
@@ -154,7 +187,7 @@ class Command(BaseModel):
     args: dict = {}
 
 
-RIG_COMMANDS = {"set_oc", "flight_sheet", "miner_start", "miner_stop", "miner_restart", "set_mode", "set_ai", "reboot"}
+RIG_COMMANDS = {"set_oc", "flight_sheet", "miner_start", "miner_stop", "miner_restart", "set_mode", "set_ai", "set_watchdog", "reboot"}
 
 
 @app.post("/api/rigs/{rig}/cmd")
@@ -218,6 +251,39 @@ def history(rig: str, hours: float = 24):
 
 
 # --- flight sheets and OC profiles, kept on the hub and pushed to rigs
+
+@app.get("/api/settings")
+def get_settings():
+    return notifier.settings()
+
+
+@app.put("/api/settings")
+def put_settings(data: dict):
+    out = notify.DEFAULTS | {k: data[k] for k in notify.DEFAULTS if k in data}
+    for k in ("alerts_url", "status_url"):
+        out[k] = (out[k] or "").strip()
+        if out[k] and not out[k].startswith("https://"):
+            raise HTTPException(400, "a Discord webhook URL starts with https://")
+    out["status_every_min"] = max(0, int(out["status_every_min"] or 0))
+    store.save("settings", "discord", out)
+    return out
+
+
+@app.post("/api/settings/test")
+async def test_discord():
+    s = notifier.settings()
+    if not (s["alerts_url"] or s["status_url"]):
+        raise HTTPException(400, "add a webhook URL first")
+    errors = [f"{ch}: {e}" for ch in ("alerts", "status") if (e := await notifier.send(ch, f"Test from fizzmineOS: this is the {ch} channel."))]
+    if errors:
+        raise HTTPException(502, "; ".join(errors))
+    return {"ok": True}
+
+
+@app.get("/api/events")
+def events(limit: int = 50):
+    return store.events(min(limit, 500))
+
 
 KINDS = {"flight-sheets": "flight_sheet", "oc-profiles": "oc_profile"}
 

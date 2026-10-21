@@ -17,7 +17,7 @@ import websockets
 from .fans import FanController
 from .gpu import FakeGpus, NvmlGpus
 from .miner import FakeMiner, WildRig, attach_to_gpus
-from .runner import MinerRunner
+from .runner import MinerRunner, read_log
 
 log = logging.getLogger("fizzagent")
 
@@ -48,6 +48,7 @@ class Agent:
         self.runner = MinerRunner(self.rig, fake=fake)
         self.fans = FanController(self.gpus)
         self.fake = fake
+        self.log_path = None  # default: runner.LOG_FILE
         self.state = {"mode": "stopped", "flight_sheet": None, "oc": {}, "ai": {"start_cmd": "", "stop_cmd": ""}}
         try:
             self.state.update(json.loads(self.state_path.read_text()))
@@ -166,6 +167,10 @@ class Agent:
             self.state["ai"] = {"start_cmd": args.get("start_cmd", ""), "stop_cmd": args.get("stop_cmd", "")}
             self.save()
             return "saved"
+        if cmd == "miner_log":
+            out = read_log(args.get("offset"), path=self.log_path)
+            out["running"] = self.runner.running()
+            return out
         if cmd == "reboot":
             if not self.fake:
                 subprocess.Popen(["bash", "-c", "sleep 2; systemctl reboot"])
@@ -196,20 +201,37 @@ async def run(cfg, agent):
             await ws.send(json.dumps(await asyncio.to_thread(agent.snapshot)))
             await asyncio.sleep(interval)
 
+    busy = asyncio.Lock()  # one rig-changing command at a time
+
+    async def do_command(ws, msg):
+        quiet = msg.get("cmd") == "miner_log"  # the console asks every couple of seconds
+        if not quiet:
+            log.info("command %s %s", msg.get("cmd"), msg.get("args"))
+        try:
+            if quiet:
+                out = agent.handle(msg["cmd"], msg.get("args") or {})
+            else:
+                async with busy:
+                    out = await asyncio.to_thread(agent.handle, msg["cmd"], msg.get("args") or {})
+            result = {"ok": True, "msg": out}
+        except Exception as e:
+            log.exception("command %s failed", msg.get("cmd"))
+            result = {"ok": False, "msg": str(e)}
+        await ws.send(json.dumps({"type": "result", "id": msg.get("id"), **result}))
+        if not quiet:
+            # report the new state right away instead of waiting for the next tick
+            await ws.send(json.dumps(await asyncio.to_thread(agent.snapshot)))
+
     async def take_commands(ws):
+        # each command in its own task, so the console keeps updating while a long one (a miner download) runs
+        running = set()
         async for raw in ws:
             msg = json.loads(raw)
             if msg.get("type") != "cmd":
                 continue
-            log.info("command %s %s", msg.get("cmd"), msg.get("args"))
-            try:
-                result = {"ok": True, "msg": await asyncio.to_thread(agent.handle, msg["cmd"], msg.get("args") or {})}
-            except Exception as e:
-                log.exception("command %s failed", msg.get("cmd"))
-                result = {"ok": False, "msg": str(e)}
-            await ws.send(json.dumps({"type": "result", "id": msg.get("id"), **result}))
-            # report the new state right away instead of waiting for the next tick
-            await ws.send(json.dumps(await asyncio.to_thread(agent.snapshot)))
+            t = asyncio.create_task(do_command(ws, msg))
+            running.add(t)
+            t.add_done_callback(running.discard)
 
     # websockets' connect() as an async iterator reconnects with backoff when the hub goes away
     async for ws in websockets.connect(url, open_timeout=10):

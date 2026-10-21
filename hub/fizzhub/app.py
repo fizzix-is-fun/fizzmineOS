@@ -164,6 +164,15 @@ async def rig_command(rig: str, c: Command):
     return await send_command(rig, c.cmd, c.args)
 
 
+@app.get("/api/rigs/{rig}/log")
+async def rig_log(rig: str, offset: int | None = None):
+    """Miner output for the console page: what's new since `offset`."""
+    res = await send_command(rig, "miner_log", {"offset": offset})
+    if not res["ok"]:
+        raise HTTPException(503, res["msg"])
+    return res["msg"]
+
+
 @app.get("/api/rigs")
 def rigs():
     now = time.time()

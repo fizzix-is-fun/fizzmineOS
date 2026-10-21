@@ -26,6 +26,7 @@
   th, td { text-align:right; padding:6px 8px; border-top:1px solid var(--line); white-space:nowrap; }
   th:first-child, td:first-child { text-align:left; }
   th { color:var(--quiet); font-weight:500; font-size:12px; }
+  .off { color:var(--quiet); }
   .hot { color:var(--warn); } .very-hot { color:var(--bad); }
   svg.spark { width:100%; height:40px; margin-top:8px; display:block; }
   .empty { color:var(--quiet); }
@@ -41,6 +42,7 @@
 <script>
 const fmt = (v, d = 0) => v == null ? '–' : Number(v).toFixed(d);
 const ths = hs => hs == null ? '–' : (hs / 1e12).toFixed(1) + ' TH/s';
+const offset = o => o ? ` <span class="off">(${o > 0 ? '+' : ''}${o})</span>` : '';
 const tempClass = t => t >= 80 ? 'very-hot' : t >= 72 ? 'hot' : '';
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
@@ -61,8 +63,8 @@ function rigCard(r, hist) {
     <td class="${tempClass(g.temp_c)}">${fmt(g.temp_c)} °C</td>
     <td>${fmt(g.fan_pct)} %</td>
     <td>${fmt(g.power_w)} / ${fmt(g.power_limit_w)} W</td>
-    <td class="wide">${fmt(g.core_mhz)} MHz</td>
-    <td class="wide">${fmt(g.mem_mhz)} MHz</td>
+    <td class="wide">${fmt(g.core_mhz)} MHz${offset(g.core_offset_mhz)}</td>
+    <td class="wide">${fmt(g.mem_mhz)} MHz${offset(g.mem_offset_mhz)}</td>
     <td class="wide">${fmt(g.vram_used_mb / 1024, 1)} / ${fmt(g.vram_total_mb / 1024, 0)} GB</td>
     <td>${mining ? ths(g.hashrate_hs ?? (m.card_hashrate_hs || [])[i]) : '–'}</td>
     <td>${mining && g.shares_accepted != null ? `${g.shares_accepted} / ${g.shares_rejected ?? 0}` : '–'}</td></tr>`).join('');

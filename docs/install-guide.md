@@ -20,6 +20,7 @@ You set up the hub once on the mini PC. After that, each rig is a fresh Ubuntu i
 2. Go through the installer with the defaults. On these two screens:
    - **Profile**: pick a username and password you'll remember.
    - **SSH**: tick **Install OpenSSH server**.
+   - **Network**: plug in Ethernet before you start, or pick your Wi-Fi on the network screen. Without a network the install finishes offline and you'd have to type the network setup by hand at the machine.
 3. When it finishes, remove the USB stick and reboot. Log in, then run `hostname -I`. The first address shown, for example `192.168.1.50`, is the hub's IP.
 4. Optional but good: in your router, reserve that IP for the mini PC so it never changes.
 5. From your main PC, open a terminal and connect with `ssh <username>@<hub-ip>`.

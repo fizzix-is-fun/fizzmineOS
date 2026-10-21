@@ -59,7 +59,7 @@ function rigCard(r, hist) {
   const mining = r.online && m.running;
   const eff = mining && power ? (m.hashrate_hs / 1e12 / power).toFixed(2) + ' TH/W' : '–';
   const rows = r.gpus.map((g, i) => `<tr>
-    <td>${g.index}: ${esc((g.name || '').replace(/^NVIDIA (GeForce )?/, ''))}</td>
+    <td title="${g.vbios ? 'VBIOS ' + esc(g.vbios) : ''}">${g.index}: ${g.brand ? esc(g.brand) + ' ' : ''}${esc((g.name || '').replace(/^NVIDIA (GeForce )?/, ''))}</td>
     <td class="${tempClass(g.temp_c)}">${fmt(g.temp_c)} °C</td>
     <td>${fmt(g.fan_pct)} %</td>
     <td>${fmt(g.power_w)} / ${fmt(g.power_limit_w)} W</td>

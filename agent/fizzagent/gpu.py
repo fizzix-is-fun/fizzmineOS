@@ -1,5 +1,7 @@
 """Reads per-card stats from NVML. Read-only: nothing here changes clocks or fans."""
 import random
+import re
+import subprocess
 
 try:
     import pynvml as nv
@@ -14,10 +16,39 @@ def _try(fn, *args, default=None):
         return default
 
 
+def short_brand(svendor):
+    """'Micro-Star International Co., Ltd. [MSI]' -> 'MSI', 'ASUSTeK Computer Inc.' -> 'ASUS'."""
+    if not svendor:
+        return None
+    m = re.search(r"\[([^\]]+)\]", svendor)
+    if m:
+        return m.group(1)
+    name = re.sub(r"\(.*?\)", "", svendor.split(",")[0])
+    name = re.sub(r"\b(Inc|Corp|Corporation|Co|Ltd|Limited|Technology|Technologies|International|Computer|"
+                  r"Microsystems|Electronics)\b\.?", "", name)
+    name = " ".join(name.split())
+    return {"ASUSTeK": "ASUS"}.get(name, name) or None
+
+
+def card_brand(bus_id):
+    """The board maker (MSI, ASUS, Gigabyte...) from the PCI subsystem vendor, via lspci's name list."""
+    try:
+        out = subprocess.run(["lspci", "-vmm", "-s", bus_id[-12:]], capture_output=True, text=True, timeout=5).stdout
+    except (OSError, subprocess.SubprocessError, TypeError):
+        return None
+    m = re.search(r"^SVendor:\s*(.+)$", out, re.M)
+    return short_brand(m.group(1)) if m else None
+
+
 class NvmlGpus:
     def __init__(self):
         nv.nvmlInit()
         self.handles = [nv.nvmlDeviceGetHandleByIndex(i) for i in range(nv.nvmlDeviceGetCount())]
+        # things that don't change while the agent runs
+        self.fixed = [{
+            "brand": card_brand(_try(lambda: nv.nvmlDeviceGetPciInfo(h).busId)),
+            "vbios": _try(nv.nvmlDeviceGetVbiosVersion, h),
+        } for h in self.handles]
 
     def read(self):
         cards = []
@@ -30,6 +61,7 @@ class NvmlGpus:
             cards.append({
                 "index": i,
                 "name": _try(nv.nvmlDeviceGetName, h),
+                **self.fixed[i],
                 "uuid": _try(nv.nvmlDeviceGetUUID, h),
                 "bus_id": _try(lambda: nv.nvmlDeviceGetPciInfo(h).busId),
                 "temp_c": _try(nv.nvmlDeviceGetTemperature, h, nv.NVML_TEMPERATURE_GPU),
@@ -57,6 +89,8 @@ class FakeGpus:
         return [{
             "index": i,
             "name": name,
+            "brand": ("MSI", "Gigabyte")[i % 2],
+            "vbios": "98.06.1F.00.9A",
             "uuid": f"GPU-fake-{i}",
             "bus_id": f"00000000:0{i + 1}:00.0",
             "temp_c": random.randint(58, 72),

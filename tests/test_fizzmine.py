@@ -118,3 +118,15 @@ def test_attach_skips_cards_the_miner_does_not_use():
     gpus = [{"index": 0, "bus_id": "00000000:05:00.0"}]
     attach_to_gpus(gpus, parse_wildrig(WILDRIG_NG))
     assert "hashrate_hs" not in gpus[0]
+
+
+def test_short_brand():
+    from fizzagent.gpu import short_brand
+    assert short_brand("Micro-Star International Co., Ltd. [MSI]") == "MSI"
+    assert short_brand("ASUSTeK Computer Inc.") == "ASUS"
+    assert short_brand("Gigabyte Technology Co., Ltd") == "Gigabyte"
+    assert short_brand("ZOTAC International (MCO) Ltd.") == "ZOTAC"
+    assert short_brand("Palit Microsystems Inc.") == "Palit"
+    assert short_brand("NVIDIA Corporation") == "NVIDIA"
+    assert short_brand("Red Hat, Inc.") == "Red Hat"
+    assert short_brand(None) is None

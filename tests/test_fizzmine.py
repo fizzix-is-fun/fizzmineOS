@@ -163,7 +163,7 @@ def test_oc_saved_and_applied_only_while_mining(tmp_path):
     snap = a.snapshot()
     assert snap["agent"]["watchdog"]["status"] == "ok"
     del snap["agent"]["watchdog"]
-    assert snap["agent"] == {"mode": "mining", "flight_sheet": "pearl", "miner_running": True, "ai": {"start_cmd": "", "stop_cmd": ""}}
+    assert snap["agent"] == {"mode": "mining", "flight_sheet": "pearl", "miner_running": True, "ai": {"start_cmd": "", "stop_cmd": ""}, "gpu_error": None}
     assert snap["gpus"][0]["oc"]["power_w"] == 140 and snap["gpus"][1]["oc"] is None
     # clearing a card's OC puts it back to stock right away
     a.handle("set_oc", {"cards": {u0: None}})

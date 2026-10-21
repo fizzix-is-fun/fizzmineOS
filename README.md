@@ -2,12 +2,12 @@
 
 Home GPU rig control center: a small agent on each rig reports GPU and miner stats to one hub, which serves a web dashboard.
 
-Phase 1 is read-only: it watches temps, fans, power, clocks, VRAM and WildRig hashrate. Nothing changes clocks or fans yet.
+It watches temps, fans, power, clocks, offsets and hashrate per card, and lets you run rigs from the browser: flight sheets pushed to chosen rigs, per-card overclocks and fan control, OC profiles by card model, miner start/stop/restart, reboot, and a mine/AI switch. See [docs/controls.md](docs/controls.md).
 
 ```
 agent/   rig service (Python, NVML), rig installer and systemd unit
 hub/     control center (FastAPI + SQLite), the dashboard and the hub setup script; runs in Docker
-docs/    install guide
+docs/    install guide and how to use the controls
 tests/   pytest suite, runs without a GPU
 ```
 
@@ -40,7 +40,8 @@ python -m pytest tests
 
 1. Watch: live stats and 7 days of history
 2. One-command setup for the hub and rigs
-3. Control: mine/AI toggle, power, clock locks, offsets and fan targets per card
-4. Flight sheets: saved miner + pool + wallet + tuning, pushed to rigs
-5. Safety and alerts: watchdog, fallback to stock clocks, notifications
-6. Automation: pause mining while the AI is in use
+3. Control: login, mine/AI switch, miner and rig controls, per-card OC and fans, OC profiles by card model
+4. Flight sheets: miner download, pool, wallet and arguments, pushed to chosen rigs
+5. Safety and alerts: temperature protection, hashrate watchdog, Discord status and alert channels
+6. Miner console in the browser, driver picking from the dashboard
+7. Automation: pause mining while the AI is in use

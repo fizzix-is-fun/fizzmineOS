@@ -76,9 +76,13 @@ if [ ! -f "$CONF" ]; then
   sed "s/^enroll_key = .*/enroll_key = \"$(openssl rand -hex 16)\"/" "$SRC/hub/hub.example.toml" > "$CONF"
   chmod 600 "$CONF"
 fi
+# dashboard password (older configs from before the login existed get one too)
+if ! grep -q '^admin_password' "$CONF"; then
+  sed -i "0,/^enroll_key/s//admin_password = \"$(openssl rand -base64 12 | tr -d '/+=')\"\n&/" "$CONF"
+fi
 
 say "Starting the hub"
-docker compose -f "$SRC/hub/compose.yaml" up -d --build
+docker compose -f "$SRC/hub/compose.yaml" up -d --build --force-recreate
 
 cat > /usr/local/bin/fizzhub-key <<EOF
 #!/bin/bash
@@ -86,6 +90,7 @@ cat > /usr/local/bin/fizzhub-key <<EOF
 KEY=\$(grep -oP '^enroll_key\s*=\s*"\K[^"]+' "$CONF")
 IP=\$(tailscale ip -4 2>/dev/null | head -1 || true)
 [ -n "\$IP" ] || IP=\$(hostname -I | awk '{print \$1}')
+echo "Dashboard password: \$(grep -oP '^admin_password\s*=\s*"\K[^"]+' "$CONF")"
 echo "On each rig, run:"
 echo "  curl -fsSL http://\$IP:8780/install.sh | sudo bash -s -- --key \$KEY"
 EOF
@@ -97,4 +102,4 @@ curl -fs http://127.0.0.1:8780/api/rigs >/dev/null || die "hub didn't come up; c
 IP=$(hostname -I | awk '{print $1}')
 say "Hub is running: http://$IP:8780"
 /usr/local/bin/fizzhub-key
-echo "(run 'sudo fizzhub-key' any time to see this again)"
+echo "(run 'sudo fizzhub-key' any time to see this again; change the password in $CONF, then rerun this setup)"

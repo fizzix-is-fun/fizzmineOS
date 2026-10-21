@@ -5,5 +5,8 @@ db = "/var/lib/fizzmine/hub.db"
 # Generate one with: openssl rand -hex 16
 enroll_key = "change-me"
 
+# Password for the dashboard. Leave it out to run without a login (not recommended once rigs can be controlled).
+admin_password = "change-me"
+
 # Optional: rigs set up by hand, name = token. Enrolled rigs don't need a line here.
 [rigs]

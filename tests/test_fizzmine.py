@@ -130,3 +130,131 @@ def test_short_brand():
     assert short_brand("NVIDIA Corporation") == "NVIDIA"
     assert short_brand("Red Hat, Inc.") == "Red Hat"
     assert short_brand(None) is None
+
+
+# ---------- controls ----------
+
+def make_agent(tmp_path):
+    from fizzagent.__main__ import Agent
+    return Agent({"rig": "babyarm"}, fake=True, state_path=tmp_path / "state.json")
+
+
+FS = {"name": "pearl", "miner": "wildrig-ng", "miner_path": "/opt/x", "algo": "pearlhash",
+      "pool": "pool.pearlhash.xyz:9000", "wallet": "prl1abc@nock=xyz", "worker": "%RIG%", "extra_args": "--pearlhash-kernel 2"}
+
+
+def test_build_args_fills_placeholders():
+    from fizzagent.runner import build_args
+    args = build_args(FS, "babyarm")
+    assert args == ["--algo", "pearlhash", "--url", "pool.pearlhash.xyz:9000", "--user", "prl1abc@nock=xyz",
+                    "--worker", "babyarm", "--api-port", "60050", "--pearlhash-kernel", "2"]
+    custom = build_args({"miner": "custom", "custom_args": "-a {algo} -u {wallet}.{worker}", "algo": "kawpow", "wallet": "W"}, "r1")
+    assert custom == ["-a", "kawpow", "-u", "W.r1"]
+
+
+def test_oc_saved_and_applied_only_while_mining(tmp_path):
+    a = make_agent(tmp_path)
+    u0 = a.cards()[0]
+    assert a.handle("set_oc", {"cards": {u0: {"power_w": "140", "core_lock_mhz": 2685, "core_offset_mhz": 495}}}).startswith("saved")
+    assert a.gpus.oc[0] == {}  # not mining yet: nothing touched
+    a.handle("flight_sheet", {"flight_sheet": FS, "start": True})
+    assert a.state["mode"] == "mining" and a.runner.running()
+    assert a.gpus.oc[0] == {"power_w": 140, "core_lock_mhz": 2685, "core_offset_mhz": 495}
+    snap = a.snapshot()
+    assert snap["agent"] == {"mode": "mining", "flight_sheet": "pearl", "miner_running": True, "ai": {"start_cmd": "", "stop_cmd": ""}}
+    assert snap["gpus"][0]["oc"]["power_w"] == 140 and snap["gpus"][1]["oc"] is None
+    # clearing a card's OC puts it back to stock right away
+    a.handle("set_oc", {"cards": {u0: None}})
+    assert a.gpus.oc[0] == {} and u0 not in a.state["oc"]
+
+
+def test_ai_mode_stops_miner_and_resets_clocks(tmp_path):
+    a = make_agent(tmp_path)
+    u0 = a.cards()[0]
+    a.handle("set_oc", {"cards": {u0: {"power_w": 140, "fan_mode": "fixed", "fan_value": 80}}})
+    a.handle("flight_sheet", {"flight_sheet": FS, "start": True})
+    a.tick()
+    assert a.gpus.fan[0] == 80
+    a.handle("set_mode", {"mode": "ai"})
+    assert a.state["mode"] == "ai" and not a.runner.running()
+    assert a.gpus.oc[0] == {} and a.gpus.fan[0] is None  # stock clocks, fans back on auto
+    a.handle("set_mode", {"mode": "mining"})
+    assert a.runner.running() and a.gpus.oc[0]["power_w"] == 140
+
+
+def test_state_survives_restart(tmp_path):
+    a = make_agent(tmp_path)
+    a.handle("flight_sheet", {"flight_sheet": FS, "start": True})
+    b = make_agent(tmp_path)  # a reboot
+    assert not b.runner.running()
+    b.boot()
+    assert b.runner.running() and b.state["flight_sheet"]["name"] == "pearl"
+    b.handle("miner_stop", {})
+    c = make_agent(tmp_path)
+    c.boot()
+    assert not c.runner.running()  # stopped on purpose stays stopped
+
+
+def test_bad_fan_mode_rejected(tmp_path):
+    a = make_agent(tmp_path)
+    with pytest.raises(ValueError):
+        a.handle("set_oc", {"cards": {a.cards()[0]: {"fan_mode": "turbo"}}})
+
+
+def test_fan_target_loop():
+    from fizzagent.fans import FanController
+    from fizzagent.gpu import FakeGpus
+    g = FakeGpus()
+    f = FanController(g)
+    f.tick({0: {"fan_mode": "target", "fan_value": 60}})  # fake temp is 66, so fans speed up
+    first = g.fan[0]
+    f.tick({0: {"fan_mode": "target", "fan_value": 60}})
+    assert g.fan[0] > first
+    f.tick({0: {"fan_mode": "auto"}})
+    assert g.fan[0] is None
+
+
+def test_login_required_when_password_set(tmp_path, monkeypatch):
+    cfg = tmp_path / "hub.toml"
+    cfg.write_text('enroll_key = "joinme"\nadmin_password = "hunter2"\n[rigs]\n')
+    monkeypatch.setenv("FIZZHUB_CONFIG", str(cfg))
+    monkeypatch.setenv("FIZZHUB_DB", str(tmp_path / "hub.db"))
+    import fizzhub.app
+    app = importlib.reload(fizzhub.app).app
+    from fastapi.testclient import TestClient
+    with TestClient(app) as c:
+        assert c.get("/api/rigs").status_code == 401
+        assert c.get("/api/me").json() == {"logged_in": False, "password_set": True}
+        assert c.post("/api/login", json={"password": "nope"}).status_code == 403
+        # rigs can still enroll and fetch the installer without logging in
+        assert c.post("/api/enroll", json={"key": "joinme", "rig": "r1"}).status_code == 200
+        assert c.get("/install.sh").status_code == 200
+        assert c.post("/api/login", json={"password": "hunter2"}).status_code == 200
+        assert c.get("/api/rigs").status_code == 200
+
+
+def test_commands_reach_the_agent_and_come_back(client):
+    import threading
+    token = client.post("/api/enroll", json={"key": "joinme", "rig": "r1"}).json()["token"]
+    with client.websocket_connect(f"/ws/agent?rig=r1&token={token}") as ws:
+        ws.send_json({"type": "stats", "gpus": [{"index": 0, "uuid": "GPU-a", "name": "NVIDIA GeForce RTX 5060 Ti"}], "miner": {}})
+
+        def fake_agent():
+            for _ in range(3):
+                msg = ws.receive_json()
+                ws.send_json({"type": "result", "id": msg["id"], "ok": True, "msg": f"did {msg['cmd']} {sorted(msg['args'])}"})
+
+        t = threading.Thread(target=fake_agent)
+        t.start()
+        assert client.post("/api/rigs/r1/cmd", json={"cmd": "miner_restart"}).json() == {"rig": "r1", "ok": True, "msg": "did miner_restart []"}
+        client.put("/api/flight-sheets/pearl", json=FS)
+        assert [s["name"] for s in client.get("/api/flight-sheets").json()] == ["pearl"]
+        res = client.post("/api/flight-sheets/pearl/push", json={"rigs": ["r1", "armadillo"]}).json()
+        assert res[0]["ok"] and "flight_sheet" in res[0]["msg"]
+        assert res[1] == {"rig": "armadillo", "ok": False, "msg": "rig is offline"}
+        client.put("/api/oc-profiles/5060", json={"gpu_model": "NVIDIA GeForce RTX 5060 Ti", "oc": {"power_w": 140}})
+        res = client.post("/api/oc-profiles/5060/apply").json()
+        assert res == [{"rig": "r1", "ok": True, "msg": "did set_oc ['cards']"}]
+        t.join(timeout=5)
+    assert client.post("/api/rigs/r1/cmd", json={"cmd": "rm -rf"}).status_code == 400
+    assert client.post("/api/rigs/r1/cmd", json={"cmd": "reboot"}).json()["msg"] == "rig is offline"

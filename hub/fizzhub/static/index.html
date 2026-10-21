@@ -5,47 +5,159 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>fizzmineOS</title>
 <style>
-  :root { --bg:#0f1115; --panel:#181b22; --line:#2a2f3a; --text:#e6e8ec; --quiet:#8b93a3; --good:#3ecf8e; --warn:#f5a524; --bad:#f05252; --accent:#5aa9ff; }
+  :root { --bg:#0f1115; --panel:#181b22; --panel2:#1f232c; --line:#2a2f3a; --text:#e6e8ec; --quiet:#8b93a3; --good:#3ecf8e; --warn:#f5a524; --bad:#f05252; --accent:#5aa9ff; }
   * { box-sizing: border-box; }
+  [hidden] { display:none !important; }
   body { margin:0; background:var(--bg); color:var(--text); font:14px/1.4 system-ui, sans-serif; }
-  header { display:flex; align-items:baseline; gap:16px; padding:16px; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+  header { display:flex; align-items:center; gap:16px; padding:12px 16px; border-bottom:1px solid var(--line); flex-wrap:wrap; }
   header h1 { font-size:18px; margin:0; }
+  nav { display:flex; gap:4px; }
+  nav button { background:none; border:1px solid transparent; color:var(--quiet); padding:6px 10px; border-radius:6px; cursor:pointer; font:inherit; }
+  nav button.on { color:var(--text); border-color:var(--line); background:var(--panel); }
+  .spacer { flex:1; }
   .totals { color:var(--quiet); }
   .totals b { color:var(--text); }
-  main { padding:16px; display:grid; gap:16px; }
-  .rig { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:16px; overflow-x:auto; }
-  .rig-head { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:12px; }
-  .rig-head h2 { font-size:16px; margin:0; }
+  main { padding:16px; display:grid; gap:16px; max-width:1400px; }
+  .panel, .rig { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:16px; overflow-x:auto; }
+  .rig-head { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:10px; }
+  .rig-head h2, .panel h2 { font-size:16px; margin:0; }
+  .controls { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px; align-items:center; }
   .dot { width:10px; height:10px; border-radius:50%; background:var(--bad); }
   .dot.on { background:var(--good); }
   .mode { font-size:12px; padding:2px 8px; border-radius:99px; border:1px solid var(--line); color:var(--quiet); }
   .mode.mining { color:var(--accent); border-color:var(--accent); }
+  .mode.ai { color:var(--good); border-color:var(--good); }
   .stat { color:var(--quiet); }
   .stat b { color:var(--text); }
-  table { border-collapse:collapse; width:100%; min-width:640px; }
+  table { border-collapse:collapse; width:100%; }
+  .gpus { min-width:720px; }
   th, td { text-align:right; padding:6px 8px; border-top:1px solid var(--line); white-space:nowrap; }
   th:first-child, td:first-child { text-align:left; }
   th { color:var(--quiet); font-weight:500; font-size:12px; }
+  td.ocline { text-align:left; color:var(--quiet); font-size:12px; border-top:none; padding-top:0; }
   .off { color:var(--quiet); }
   .hot { color:var(--warn); } .very-hot { color:var(--bad); }
   svg.spark { width:100%; height:40px; margin-top:8px; display:block; }
-  .empty { color:var(--quiet); }
-  @media (max-width: 600px) { table { min-width:0; } .wide { display:none; } th, td { padding:6px 4px; } }
+  .empty, .hint { color:var(--quiet); }
+  .hint { font-size:12px; }
+  button.b { background:var(--panel2); color:var(--text); border:1px solid var(--line); padding:5px 10px; border-radius:6px; cursor:pointer; font:inherit; font-size:13px; }
+  button.b:hover { border-color:var(--quiet); }
+  button.b.primary { background:var(--accent); border-color:var(--accent); color:#06121f; font-weight:600; }
+  button.b.danger { color:var(--bad); }
+  button.b:disabled { opacity:.5; cursor:default; }
+  input, select { background:var(--bg); color:var(--text); border:1px solid var(--line); border-radius:6px; padding:5px 7px; font:inherit; font-size:13px; }
+  input.num { width:76px; }
+  label.f { display:grid; gap:4px; font-size:12px; color:var(--quiet); }
+  .form { display:grid; grid-template-columns:repeat(auto-fill, minmax(220px, 1fr)); gap:12px; margin:12px 0; }
+  .form .wide2 { grid-column:1 / -1; }
+  .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  dialog { background:var(--panel); color:var(--text); border:1px solid var(--line); border-radius:10px; padding:16px; max-width:min(980px, calc(100vw - 32px)); width:100%; }
+  dialog::backdrop { background:rgba(0,0,0,.6); }
+  dialog .scroll { overflow-x:auto; }
+  #toast { position:fixed; right:16px; bottom:16px; display:grid; gap:8px; z-index:10; max-width:min(420px, calc(100vw - 32px)); }
+  .t { background:var(--panel2); border:1px solid var(--line); border-left:3px solid var(--good); border-radius:8px; padding:10px 12px; font-size:13px; }
+  .t.err { border-left-color:var(--bad); }
+  #login { display:none; place-items:center; min-height:70vh; }
+  #login .panel { width:min(360px, 100%); display:grid; gap:12px; }
+  @media (max-width: 600px) { .gpus { min-width:0; } .wide { display:none; } th, td { padding:6px 4px; } }
 </style>
 </head>
 <body>
 <header>
   <h1>fizzmineOS</h1>
+  <nav id="tabs">
+    <button data-tab="rigs" class="on">Rigs</button>
+    <button data-tab="sheets">Flight sheets</button>
+    <button data-tab="profiles">OC profiles</button>
+  </nav>
   <span class="totals" id="totals"></span>
+  <span class="spacer"></span>
+  <button class="b" id="logout" hidden>Log out</button>
 </header>
-<main id="rigs"><p class="empty">Loading…</p></main>
+
+<section id="login"><form class="panel" id="loginForm">
+  <h2>Log in</h2>
+  <input type="password" id="pw" placeholder="Dashboard password" autocomplete="current-password" required>
+  <button class="b primary">Log in</button>
+  <span class="hint">On the hub, <code>sudo fizzhub-key</code> shows the password.</span>
+</form></section>
+
+<main id="view-rigs"><p class="empty">Loading…</p></main>
+<main id="view-sheets" hidden></main>
+<main id="view-profiles" hidden></main>
+
+<dialog id="ocDialog"></dialog>
+<dialog id="aiDialog"></dialog>
+<div id="toast"></div>
+
 <script>
+const $ = s => document.querySelector(s);
 const fmt = (v, d = 0) => v == null ? '–' : Number(v).toFixed(d);
 const ths = hs => hs == null ? '–' : (hs / 1e12).toFixed(1) + ' TH/s';
-const offset = o => o ? ` <span class="off">(${o > 0 ? '+' : ''}${o})</span>` : '';
 const tempClass = t => t >= 80 ? 'very-hot' : t >= 72 ? 'hot' : '';
+const offset = o => o ? ` <span class="off">(${o > 0 ? '+' : ''}${o})</span>` : '';
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const model = n => (n || '').replace(/^NVIDIA (GeForce )?/, '');
 
+let rigs = [], history = {}, lastHist = 0, tab = 'rigs', busy = new Set();
+
+function toast(msg, err) {
+  const el = document.createElement('div');
+  el.className = 't' + (err ? ' err' : '');
+  el.textContent = msg;
+  $('#toast').append(el);
+  setTimeout(() => el.remove(), err ? 9000 : 5000);
+}
+
+async function api(path, opts = {}) {
+  const r = await fetch(path, {headers: {'Content-Type': 'application/json'}, ...opts,
+    body: opts.body && typeof opts.body !== 'string' ? JSON.stringify(opts.body) : opts.body});
+  if (r.status === 401) { showLogin(); throw new Error('log in first'); }
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.detail || r.statusText);
+  return data;
+}
+
+function report(results) {
+  for (const r of [].concat(results)) toast(`${r.rig}: ${r.msg || (r.ok ? 'done' : 'failed')}`, !r.ok);
+}
+
+async function rigCmd(rig, cmd, args = {}) {
+  const key = rig + cmd;
+  if (busy.has(key)) return;
+  busy.add(key); render();
+  try { report(await api(`api/rigs/${encodeURIComponent(rig)}/cmd`, {method: 'POST', body: {cmd, args}})); }
+  catch (e) { toast(e.message, true); }
+  finally { busy.delete(key); refresh(); }
+}
+
+// ---------- login ----------
+function showLogin() {
+  $('#login').style.display = 'grid';
+  for (const v of ['rigs', 'sheets', 'profiles']) $('#view-' + v).hidden = true;
+  $('#tabs').hidden = true;
+}
+$('#loginForm').onsubmit = async e => {
+  e.preventDefault();
+  try {
+    await api('api/login', {method: 'POST', body: {password: $('#pw').value}});
+    $('#login').style.display = 'none'; $('#tabs').hidden = false; $('#logout').hidden = false;
+    show(tab); refresh();
+  } catch (err) { toast(err.message, true); }
+};
+$('#logout').onclick = async () => { await api('api/logout', {method: 'POST'}); showLogin(); };
+
+// ---------- tabs ----------
+function show(t) {
+  tab = t;
+  for (const b of document.querySelectorAll('#tabs button')) b.classList.toggle('on', b.dataset.tab === t);
+  for (const v of ['rigs', 'sheets', 'profiles']) $('#view-' + v).hidden = v !== t;
+  if (t === 'sheets') renderSheets();
+  if (t === 'profiles') renderProfiles();
+}
+for (const b of document.querySelectorAll('#tabs button')) b.onclick = () => show(b.dataset.tab);
+
+// ---------- rigs ----------
 function spark(points) {
   const vals = points.map(p => p.hashrate_hs ?? 0);
   if (vals.length < 2 || Math.max(...vals) === 0) return '';
@@ -54,12 +166,35 @@ function spark(points) {
   return `<svg class="spark" viewBox="0 0 1000 40" preserveAspectRatio="none"><path d="${d}" fill="none" stroke="var(--accent)" stroke-width="2" vector-effect="non-scaling-stroke"/></svg>`;
 }
 
+function ocSummary(oc) {
+  if (!oc) return '';
+  const p = [];
+  if (oc.power_w) p.push(`PL ${oc.power_w} W`);
+  if (oc.core_lock_mhz) p.push(`core lock ${oc.core_lock_mhz}`);
+  if (oc.core_offset_mhz) p.push(`core ${oc.core_offset_mhz > 0 ? '+' : ''}${oc.core_offset_mhz}`);
+  if (oc.mem_lock_mhz) p.push(`mem lock ${oc.mem_lock_mhz}`);
+  if (oc.mem_offset_mhz) p.push(`mem ${oc.mem_offset_mhz > 0 ? '+' : ''}${oc.mem_offset_mhz}`);
+  if (oc.fan_mode === 'fixed') p.push(`fan ${oc.fan_value}%`);
+  if (oc.fan_mode === 'target') p.push(`fan → ${oc.fan_value} °C`);
+  return p.length ? 'OC: ' + p.join(' · ') : '';
+}
+
+function btn(rig, cmd, label, cls = '', args = null) {
+  const id = `${rig}|${cmd}|${label}`;
+  return `<button class="b ${cls}" data-rig="${esc(rig)}" data-cmd="${cmd}" data-args='${esc(JSON.stringify(args || {}))}' ${busy.has(rig + cmd) ? 'disabled' : ''}>${label}</button>`;
+}
+
 function rigCard(r, hist) {
-  const m = r.miner || {}, power = r.gpus.reduce((s, g) => s + (g.power_w || 0), 0);
+  const m = r.miner || {}, a = r.agent || {}, power = r.gpus.reduce((s, g) => s + (g.power_w || 0), 0);
   const mining = r.online && m.running;
   const eff = mining && power ? (m.hashrate_hs / 1e12 / power).toFixed(2) + ' TH/W' : '–';
-  const rows = r.gpus.map((g, i) => `<tr>
-    <td title="${g.vbios ? 'VBIOS ' + esc(g.vbios) : ''}">${g.index}: ${g.brand ? esc(g.brand) + ' ' : ''}${esc((g.name || '').replace(/^NVIDIA (GeForce )?/, ''))}</td>
+  const share = m.shares_accepted != null && (m.shares_accepted + (m.shares_rejected || 0)) > 0
+    ? (100 * m.shares_accepted / (m.shares_accepted + (m.shares_rejected || 0))).toFixed(1) + '%' : '–';
+  const modeLabel = !r.online ? 'offline' : mining ? 'mining ' + esc(m.algo || '') : a.mode === 'ai' ? 'AI mode' : a.miner_running ? 'miner starting' : 'idle';
+  const rows = r.gpus.map((g, i) => {
+    const line = ocSummary(g.oc) + (g.oc && a.mode !== 'mining' ? ' (applies when mining)' : '');
+    return `<tr>
+    <td title="${g.vbios ? 'VBIOS ' + esc(g.vbios) : ''}">${g.index}: ${g.brand ? esc(g.brand) + ' ' : ''}${esc(model(g.name))}</td>
     <td class="${tempClass(g.temp_c)}">${fmt(g.temp_c)} °C</td>
     <td>${fmt(g.fan_pct)} %</td>
     <td>${fmt(g.power_w)} / ${fmt(g.power_limit_w)} W</td>
@@ -67,42 +202,257 @@ function rigCard(r, hist) {
     <td class="wide">${fmt(g.mem_mhz)} MHz${offset(g.mem_offset_mhz)}</td>
     <td class="wide">${fmt(g.vram_used_mb / 1024, 1)} / ${fmt(g.vram_total_mb / 1024, 0)} GB</td>
     <td>${mining ? ths(g.hashrate_hs ?? (m.card_hashrate_hs || [])[i]) : '–'}</td>
-    <td>${mining && g.shares_accepted != null ? `${g.shares_accepted} / ${g.shares_rejected ?? 0}` : '–'}</td></tr>`).join('');
+    <td>${mining && g.shares_accepted != null ? `${g.shares_accepted} / ${g.shares_rejected ?? 0}` : '–'}</td></tr>`
+    + (line ? `<tr><td class="ocline" colspan="9">${esc(line)}</td></tr>` : '');
+  }).join('');
+  const controls = r.online ? `<div class="controls">
+      ${a.mode === 'mining' ? btn(r.rig, 'set_mode', 'Switch to AI', '', {mode: 'ai'}) : btn(r.rig, 'set_mode', 'Start mining', 'primary', {mode: 'mining'})}
+      ${a.miner_running ? btn(r.rig, 'miner_restart', 'Restart miner') + btn(r.rig, 'miner_stop', 'Stop miner') : ''}
+      <button class="b" data-oc="${esc(r.rig)}">Overclock</button>
+      <button class="b" data-ai="${esc(r.rig)}">AI mode settings</button>
+      ${btn(r.rig, 'reboot', 'Reboot', 'danger')}
+      <span class="hint">Flight sheet: ${a.flight_sheet ? esc(a.flight_sheet) : 'none yet (push one from Flight sheets)'}</span>
+    </div>` : '';
   return `<section class="rig">
     <div class="rig-head">
       <span class="dot ${r.online ? 'on' : ''}" title="${r.online ? 'online' : 'offline'}"></span>
       <h2>${esc(r.rig)}</h2>
-      <span class="mode ${mining ? 'mining' : ''}">${!r.online ? 'offline' : mining ? 'mining ' + esc(m.algo || '') : 'AI / idle'}</span>
+      <span class="mode ${mining ? 'mining' : a.mode === 'ai' ? 'ai' : ''}">${modeLabel}</span>
       <span class="stat">Hashrate <b>${mining ? ths(m.hashrate_hs) : '–'}</b></span>
       <span class="stat">Power <b>${fmt(power)} W</b></span>
       <span class="stat">Efficiency <b>${eff}</b></span>
       <span class="stat">Shares <b>${m.running ? `${fmt(m.shares_accepted)} / ${fmt(m.shares_rejected)} rej` : '–'}</b></span>
+      <span class="stat">Accepted <b>${mining ? share : '–'}</b></span>
     </div>
-    ${r.gpus.length ? `<table><thead><tr><th>GPU</th><th>Temp</th><th>Fan</th><th>Power</th><th class="wide">Core</th><th class="wide">Mem</th><th class="wide">VRAM</th><th>Hashrate</th><th>Shares</th></tr></thead><tbody>${rows}</tbody></table>`
+    ${controls}
+    ${r.gpus.length ? `<table class="gpus"><thead><tr><th>GPU</th><th>Temp</th><th>Fan</th><th>Power</th><th class="wide">Core</th><th class="wide">Mem</th><th class="wide">VRAM</th><th>Hashrate</th><th>Shares</th></tr></thead><tbody>${rows}</tbody></table>`
       : '<p class="empty">No reports yet. Install the agent on this rig.</p>'}
     ${spark(hist)}
   </section>`;
 }
 
-let history = {}, lastHist = 0;
+function render() {
+  const live = rigs.filter(r => r.online);
+  const hr = live.reduce((s, r) => s + (r.miner.running ? r.miner.hashrate_hs || 0 : 0), 0);
+  const w = live.reduce((s, r) => s + r.gpus.reduce((a, g) => a + (g.power_w || 0), 0), 0);
+  $('#totals').innerHTML = `${live.length}/${rigs.length} rigs online · <b>${ths(hr)}</b> · <b>${fmt(w)} W</b>`;
+  $('#view-rigs').innerHTML = rigs.length ? rigs.map(r => rigCard(r, history[r.rig] || [])).join('') : '<p class="empty">No rigs yet. Run the rig command from <code>sudo fizzhub-key</code> on a rig.</p>';
+}
+
+$('#view-rigs').onclick = e => {
+  const b = e.target.closest('button');
+  if (!b) return;
+  if (b.dataset.oc) return openOc(b.dataset.oc);
+  if (b.dataset.ai) return openAi(b.dataset.ai);
+  if (b.dataset.cmd) {
+    if (b.dataset.cmd === 'reboot' && !confirm(`Reboot ${b.dataset.rig}?`)) return;
+    rigCmd(b.dataset.rig, b.dataset.cmd, JSON.parse(b.dataset.args || '{}'));
+  }
+};
+
 async function refresh() {
   try {
-    const rigs = await (await fetch('api/rigs')).json();
+    rigs = await api('api/rigs');
+    $('#logout').hidden = false;
     if (Date.now() - lastHist > 60000) {
       lastHist = Date.now();
-      await Promise.all(rigs.map(async r => { history[r.rig] = await (await fetch(`api/rigs/${encodeURIComponent(r.rig)}/history?hours=24`)).json(); }));
+      await Promise.all(rigs.map(async r => { history[r.rig] = await api(`api/rigs/${encodeURIComponent(r.rig)}/history?hours=24`); }));
     }
-    const live = rigs.filter(r => r.online);
-    const hr = live.reduce((s, r) => s + (r.miner.running ? r.miner.hashrate_hs || 0 : 0), 0);
-    const w = live.reduce((s, r) => s + r.gpus.reduce((a, g) => a + (g.power_w || 0), 0), 0);
-    document.getElementById('totals').innerHTML = `${live.length}/${rigs.length} rigs online · <b>${ths(hr)}</b> · <b>${fmt(w)} W</b> GPU power`;
-    document.getElementById('rigs').innerHTML = rigs.length ? rigs.map(r => rigCard(r, history[r.rig] || [])).join('') : '<p class="empty">No rigs in hub.toml yet.</p>';
+    render();
   } catch (e) {
-    document.getElementById('totals').textContent = 'Hub unreachable, retrying…';
+    if (e.message !== 'log in first') $('#totals').textContent = 'Hub unreachable, retrying…';
   }
 }
-refresh();
-setInterval(refresh, 5000);
+
+// ---------- overclock dialog ----------
+const OC_FIELDS = [['power_w', 'Power W'], ['core_lock_mhz', 'Core lock'], ['core_offset_mhz', 'Core offset'], ['mem_lock_mhz', 'Mem lock'], ['mem_offset_mhz', 'Mem offset']];
+
+function ocInputs(oc = {}, prefix = '') {
+  return OC_FIELDS.map(([k]) => `<td><input class="num" type="number" name="${prefix}${k}" value="${oc[k] ?? ''}" placeholder="stock"></td>`).join('')
+    + `<td><select name="${prefix}fan_mode">${['auto', 'fixed', 'target'].map(o => `<option ${ (oc.fan_mode || 'auto') === o ? 'selected' : ''}>${o}</option>`).join('')}</select>
+       <input class="num" type="number" name="${prefix}fan_value" value="${oc.fan_value ?? ''}" placeholder="% or °C"></td>`;
+}
+
+function readOc(form, prefix = '') {
+  const oc = {};
+  for (const [k] of OC_FIELDS.concat([['fan_mode'], ['fan_value']])) {
+    const v = form.elements[prefix + k].value;
+    if (v !== '') oc[k] = k === 'fan_mode' ? v : Number(v);
+  }
+  return oc;
+}
+
+function openOc(rigName) {
+  const r = rigs.find(x => x.rig === rigName);
+  const d = $('#ocDialog');
+  d.innerHTML = `<form method="dialog" id="ocForm">
+    <h2>Overclock · ${esc(rigName)}</h2>
+    <p class="hint">Blank means stock. Offsets in MHz; 0 or blank resets. Fan: auto, fixed % or a target temperature. Saved on the rig and re-applied after reboots; applies now if the rig is mining.</p>
+    <div class="scroll"><table><thead><tr><th>GPU</th>${OC_FIELDS.map(([, l]) => `<th>${l}</th>`).join('')}<th>Fan</th><th></th></tr></thead><tbody>
+    ${r.gpus.map(g => `<tr data-uuid="${esc(g.uuid)}"><td>${g.index}: ${esc(model(g.name))}</td>${ocInputs(g.oc || {}, g.uuid + ':')}
+      <td><button class="b" type="button" data-copy="${esc(g.uuid)}" title="Copy this row to every card">Copy to all</button></td></tr>`).join('')}
+    </tbody></table></div>
+    <div class="row" style="margin-top:12px"><button class="b primary" value="save">Save and apply</button><button class="b" value="cancel" formnovalidate>Cancel</button>
+      <span class="hint">Tip: save a setting for every card of one model across all rigs under OC profiles.</span></div>
+  </form>`;
+  d.querySelector('tbody').onclick = e => {
+    const src = e.target.dataset.copy;
+    if (!src) return;
+    const f = $('#ocForm'), oc = readOc(f, src + ':');
+    for (const g of r.gpus) for (const [k] of OC_FIELDS.concat([['fan_mode'], ['fan_value']])) f.elements[g.uuid + ':' + k].value = oc[k] ?? (k === 'fan_mode' ? 'auto' : '');
+  };
+  d.onclose = () => {
+    if (d.returnValue !== 'save') return;
+    const f = $('#ocForm'), cards = {};
+    for (const g of r.gpus) { const oc = readOc(f, g.uuid + ':'); cards[g.uuid] = Object.keys(oc).length && !(Object.keys(oc).length === 1 && oc.fan_mode === 'auto') ? oc : null; }
+    rigCmd(rigName, 'set_oc', {cards});
+  };
+  d.showModal();
+}
+
+// ---------- AI mode settings ----------
+function openAi(rigName) {
+  const r = rigs.find(x => x.rig === rigName), ai = (r.agent || {}).ai || {};
+  const d = $('#aiDialog');
+  d.innerHTML = `<form method="dialog" id="aiForm">
+    <h2>AI mode · ${esc(rigName)}</h2>
+    <p class="hint">Commands the rig runs (as root) when switching. Switching to AI stops the miner and resets clocks first.</p>
+    <div class="form">
+      <label class="f wide2">When switching to AI mode, run<input name="start_cmd" value="${esc(ai.start_cmd)}" placeholder="docker compose -f /home/scort/homechat/compose.yaml start ollama"></label>
+      <label class="f wide2">When switching to mining, run<input name="stop_cmd" value="${esc(ai.stop_cmd)}" placeholder="docker compose -f /home/scort/homechat/compose.yaml stop ollama"></label>
+    </div>
+    <div class="row"><button class="b primary" value="save">Save</button><button class="b" value="cancel">Cancel</button></div>
+  </form>`;
+  d.onclose = () => {
+    if (d.returnValue !== 'save') return;
+    const f = $('#aiForm');
+    rigCmd(rigName, 'set_ai', {start_cmd: f.elements.start_cmd.value, stop_cmd: f.elements.stop_cmd.value});
+  };
+  d.showModal();
+}
+
+// ---------- flight sheets ----------
+const FS_FIELDS = [
+  ['name', 'Name', 'e.g. Pearl on pearlhash.xyz'],
+  ['miner', 'Miner', ''],
+  ['miner_url', 'Miner download URL (.tar.gz, .tar.xz or .zip)', 'https://github.com/.../wildrig-ng-1.0.0l-linux.tar.xz'],
+  ['miner_path', 'Or: miner already on the rig (path)', '/home/scort/wildrig/ng-1.0.0l'],
+  ['algo', 'Algorithm', 'pearlhash'],
+  ['pool', 'Pool', 'pool.pearlhash.xyz:9000'],
+  ['wallet', 'Wallet / user', 'prl1…@nock=…'],
+  ['worker', 'Worker name (%RIG% = rig name)', '%RIG%'],
+  ['extra_args', 'Extra arguments', '--pearlhash-kernel 2'],
+  ['miner_binary', 'Custom miner: program name in the download', 'myminer'],
+  ['custom_args', 'Custom miner: full arguments ({algo} {pool} {wallet} {worker} {api_port})', '-a {algo} -o {pool} -u {wallet}.{worker}'],
+];
+
+async function renderSheets(edit) {
+  const v = $('#view-sheets');
+  let sheets = [];
+  try { sheets = await api('api/flight-sheets'); } catch (e) { return; }
+  const fs = edit || {miner: 'wildrig-ng', worker: '%RIG%'};
+  v.innerHTML = `<section class="panel">
+    <h2>${edit ? 'Edit' : 'New'} flight sheet</h2>
+    <form id="fsForm"><div class="form">
+      ${FS_FIELDS.map(([k, l, ph]) => k === 'miner'
+        ? `<label class="f">${l}<select name="miner"><option value="wildrig-ng" ${fs.miner === 'wildrig-ng' ? 'selected' : ''}>WildRig-NG</option><option value="custom" ${fs.miner === 'custom' ? 'selected' : ''}>Custom</option></select></label>`
+        : `<label class="f ${['miner_url', 'miner_path', 'custom_args', 'wallet'].includes(k) ? 'wide2' : ''}">${l}<input name="${k}" value="${esc(fs[k] ?? '')}" placeholder="${esc(ph)}" ${k === 'name' ? 'required' : ''}></label>`).join('')}
+    </div>
+    <div class="row"><button class="b primary">Save flight sheet</button>${edit ? '<button class="b" type="button" id="fsNew">New instead</button>' : ''}</div></form>
+  </section>
+  <section class="panel"><h2>Flight sheets</h2>
+    ${sheets.length ? `<table><thead><tr><th>Name</th><th>Miner</th><th>Pool</th><th>Push to rigs</th><th></th></tr></thead><tbody>
+    ${sheets.map(s => `<tr><td>${esc(s.name)}</td><td>${esc(s.miner)}</td><td>${esc(s.pool)}</td>
+      <td><div class="row">${rigs.map(r => `<label class="row"><input type="checkbox" data-sheet="${esc(s.name)}" value="${esc(r.rig)}" ${r.online ? '' : 'disabled'}>${esc(r.rig)}</label>`).join('')}
+        <label class="row hint"><input type="checkbox" data-start="${esc(s.name)}" checked> start mining</label>
+        <button class="b primary" data-push="${esc(s.name)}">Push</button></div></td>
+      <td><button class="b" data-edit="${esc(s.name)}">Edit</button> <button class="b danger" data-del="${esc(s.name)}">Delete</button></td></tr>`).join('')}
+    </tbody></table>` : '<p class="empty">No flight sheets yet.</p>'}
+  </section>`;
+  $('#fsForm').onsubmit = async e => {
+    e.preventDefault();
+    const data = Object.fromEntries([...new FormData(e.target)].filter(([, val]) => val !== ''));
+    try { await api(`api/flight-sheets/${encodeURIComponent(data.name)}`, {method: 'PUT', body: data}); toast('Saved ' + data.name); renderSheets(); }
+    catch (err) { toast(err.message, true); }
+  };
+  if (edit) $('#fsNew').onclick = () => renderSheets();
+  v.querySelector('.panel:last-child').onclick = async e => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    if (b.dataset.edit) return renderSheets(sheets.find(s => s.name === b.dataset.edit));
+    if (b.dataset.del && confirm(`Delete flight sheet ${b.dataset.del}?`)) {
+      await api(`api/flight-sheets/${encodeURIComponent(b.dataset.del)}`, {method: 'DELETE'}); return renderSheets();
+    }
+    if (b.dataset.push) {
+      const name = b.dataset.push;
+      const picked = [...v.querySelectorAll('input[data-sheet]')].filter(c => c.dataset.sheet === name && c.checked).map(c => c.value);
+      if (!picked.length) return toast('Tick at least one rig', true);
+      const start = v.querySelector(`input[data-start="${CSS.escape(name)}"]`).checked;
+      b.disabled = true; toast(`Pushing ${name} to ${picked.join(', ')}…`);
+      try { report(await api(`api/flight-sheets/${encodeURIComponent(name)}/push`, {method: 'POST', body: {rigs: picked, start}})); }
+      catch (err) { toast(err.message, true); }
+      b.disabled = false; refresh();
+    }
+  };
+}
+
+// ---------- OC profiles ----------
+async function renderProfiles(edit) {
+  const v = $('#view-profiles');
+  let profiles = [];
+  try { profiles = await api('api/oc-profiles'); } catch (e) { return; }
+  const models = [...new Set(rigs.flatMap(r => r.gpus.map(g => g.name)).filter(Boolean))];
+  const p = edit || {oc: {}};
+  const count = m => rigs.reduce((n, r) => n + r.gpus.filter(g => g.name === m).length, 0);
+  v.innerHTML = `<section class="panel">
+    <h2>${edit ? 'Edit' : 'New'} OC profile</h2>
+    <p class="hint">One setting for every card of a model, on every rig. Applying it overwrites those cards' OC.</p>
+    <form id="opForm">
+      <div class="form">
+        <label class="f">Name<input name="name" value="${esc(p.name ?? '')}" required placeholder="5060 Ti pearl"></label>
+        <label class="f">Card model<select name="gpu_model">${models.concat(p.gpu_model && !models.includes(p.gpu_model) ? [p.gpu_model] : []).map(m => `<option value="${esc(m)}" ${m === p.gpu_model ? 'selected' : ''}>${esc(model(m))} (${count(m)} cards)</option>`).join('')}</select></label>
+      </div>
+      <div class="scroll"><table><thead><tr>${OC_FIELDS.map(([, l]) => `<th>${l}</th>`).join('')}<th>Fan</th></tr></thead><tbody><tr>${ocInputs(p.oc)}</tr></tbody></table></div>
+      <div class="row" style="margin-top:12px"><button class="b primary">Save profile</button>${edit ? '<button class="b" type="button" id="opNew">New instead</button>' : ''}</div>
+    </form>
+  </section>
+  <section class="panel"><h2>OC profiles</h2>
+    ${profiles.length ? `<table><thead><tr><th>Name</th><th>Card model</th><th>Settings</th><th></th></tr></thead><tbody>
+    ${profiles.map(x => `<tr><td>${esc(x.name)}</td><td>${esc(model(x.gpu_model))} (${count(x.gpu_model)} cards)</td><td style="text-align:left">${esc(ocSummary(x.oc).replace('OC: ', '') || 'stock')}</td>
+      <td><button class="b primary" data-apply="${esc(x.name)}">Apply to all</button> <button class="b" data-edit="${esc(x.name)}">Edit</button> <button class="b danger" data-del="${esc(x.name)}">Delete</button></td></tr>`).join('')}
+    </tbody></table>` : '<p class="empty">No OC profiles yet.</p>'}
+  </section>`;
+  $('#opForm').onsubmit = async e => {
+    e.preventDefault();
+    const f = e.target, data = {name: f.elements.name.value, gpu_model: f.elements.gpu_model.value, oc: readOc(f)};
+    if (!data.gpu_model) return toast('No cards reporting yet to pick a model from', true);
+    try { await api(`api/oc-profiles/${encodeURIComponent(data.name)}`, {method: 'PUT', body: data}); toast('Saved ' + data.name); renderProfiles(); }
+    catch (err) { toast(err.message, true); }
+  };
+  if (edit) $('#opNew').onclick = () => renderProfiles();
+  v.querySelector('.panel:last-child').onclick = async e => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    if (b.dataset.edit) return renderProfiles(profiles.find(x => x.name === b.dataset.edit));
+    if (b.dataset.del && confirm(`Delete OC profile ${b.dataset.del}?`)) {
+      await api(`api/oc-profiles/${encodeURIComponent(b.dataset.del)}`, {method: 'DELETE'}); return renderProfiles();
+    }
+    if (b.dataset.apply) {
+      b.disabled = true;
+      try { report(await api(`api/oc-profiles/${encodeURIComponent(b.dataset.apply)}/apply`, {method: 'POST'})); }
+      catch (err) { toast(err.message, true); }
+      b.disabled = false; refresh();
+    }
+  };
+}
+
+(async () => {
+  const me = await api('api/me').catch(() => ({logged_in: true}));
+  if (!me.logged_in) return showLogin();
+  if (!me.password_set) toast('No dashboard password is set: anyone on your network can control the rigs. Rerun the hub setup to add one.', true);
+  refresh();
+})();
+setInterval(() => { if (tab === 'rigs' && !document.querySelector('dialog[open]')) refresh(); }, 5000);
 </script>
 </body>
 </html>

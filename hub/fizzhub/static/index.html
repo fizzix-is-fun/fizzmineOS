@@ -239,7 +239,7 @@ function rigCard(r, hist) {
     </div>
     ${controls}
     ${r.gpus.length ? `<table class="gpus"><thead><tr><th>GPU</th><th>Temp</th><th>Fan</th><th>Power</th><th class="wide">Core</th><th class="wide">Mem</th><th class="wide">VRAM</th><th>Hashrate</th><th>Shares</th></tr></thead><tbody>${rows}</tbody></table>`
-      : '<p class="empty">No reports yet. Install the agent on this rig.</p>'}
+      : `<p class="empty">${a.gpu_error ? esc(a.gpu_error) + '. Rerun the rig install, or reboot if one just finished.' : 'No reports yet. Install the agent on this rig.'}</p>`}
     ${spark(hist)}
   </section>`;
 }

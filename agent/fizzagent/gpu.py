@@ -42,8 +42,18 @@ def card_brand(bus_id):
 
 class NvmlGpus:
     def __init__(self):
-        nv.nvmlInit()
-        self.handles = [nv.nvmlDeviceGetHandleByIndex(i) for i in range(nv.nvmlDeviceGetCount())]
+        self.handles, self.fixed, self.error = [], [], None
+        self.connect()
+
+    def connect(self):
+        """Without a loaded NVIDIA driver (mid driver install, say) the rig reports no cards and tries again later."""
+        try:
+            nv.nvmlInit()
+            self.handles = [nv.nvmlDeviceGetHandleByIndex(i) for i in range(nv.nvmlDeviceGetCount())]
+        except nv.NVMLError as e:
+            self.error = f"NVIDIA driver not loaded ({e})"
+            return
+        self.error = None
         # things that don't change while the agent runs
         self.fixed = [{
             "brand": card_brand(_try(lambda: nv.nvmlDeviceGetPciInfo(h).busId)),
@@ -51,6 +61,8 @@ class NvmlGpus:
         } for h in self.handles]
 
     def read(self):
+        if self.error:
+            self.connect()
         cards = []
         for i, h in enumerate(self.handles):
             mem = _try(nv.nvmlDeviceGetMemoryInfo, h)

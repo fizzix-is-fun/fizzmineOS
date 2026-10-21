@@ -15,6 +15,11 @@
 # Running it again is safe: it updates the agent and re-enrolls the rig.
 set -euo pipefail
 
+# Keep going if the SSH window closes (a half-done driver swap leaves the rig without a driver),
+# and keep a copy of everything it prints in /var/log/fizzmine-install.log.
+trap '' HUP
+exec > >(tee -a /var/log/fizzmine-install.log --output-error=warn-nopipe) 2>&1
+
 HUB="__HUB_URL__"
 KEY="" NAME="$(hostname)" DRIVER="" TS_KEY="" REBOOT=1 NEED_REBOOT=0 REBOOT_TO_FINISH=0
 

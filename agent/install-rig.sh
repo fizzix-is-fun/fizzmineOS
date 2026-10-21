@@ -119,8 +119,10 @@ install_nvidia_run() {
   fi
   echo "  installing NVIDIA $ver (a few minutes on an old CPU)"
   # RTX 20-series and newer use the open kernel modules (50-series requires them)
-  sh "$run" --silent --dkms --no-questions --ui=none --kernel-module-type=open --no-x-check \
-    || die "NVIDIA installer failed; its log is /var/log/nvidia-installer.log"
+  if ! sh "$run" --silent --dkms --no-questions --ui=none --kernel-module-type=open --no-x-check; then
+    systemctl start fizzagent 2>/dev/null || true  # keep the rig on the dashboard
+    die "NVIDIA installer failed; its log is /var/log/nvidia-installer.log"
+  fi
   NEED_REBOOT=1
 }
 

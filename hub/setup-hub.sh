@@ -12,6 +12,7 @@ set -euo pipefail
 REPO="https://github.com/fizzix-is-fun/fizzmineOS.git"
 SRC=/opt/fizzmine/src
 BRANCH=main TS_KEY=""
+ARGS=("$@")
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -68,6 +69,12 @@ if [ -d "$SRC/.git" ]; then
   git -C "$SRC" checkout -q -B "$BRANCH" "origin/$BRANCH"
 else
   git clone -q -b "$BRANCH" "$REPO" "$SRC"
+fi
+
+# The copy of this script that's running may be older than the one just pulled; run the new one.
+if [ -z "${FIZZ_REEXEC:-}" ] && ! cmp -s "$0" "$SRC/hub/setup-hub.sh" 2>/dev/null; then
+  say "Setup script was updated, running the new version"
+  FIZZ_REEXEC=1 exec bash "$SRC/hub/setup-hub.sh" "${ARGS[@]}"
 fi
 
 CONF="$SRC/hub/config/hub.toml"

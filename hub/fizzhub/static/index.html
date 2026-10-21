@@ -253,7 +253,6 @@ $('#view-rigs').onclick = e => {
 async function refresh() {
   try {
     rigs = await api('api/rigs');
-    $('#logout').hidden = false;
     if (Date.now() - lastHist > 60000) {
       lastHist = Date.now();
       await Promise.all(rigs.map(async r => { history[r.rig] = await api(`api/rigs/${encodeURIComponent(r.rig)}/history?hours=24`); }));
@@ -449,6 +448,7 @@ async function renderProfiles(edit) {
 (async () => {
   const me = await api('api/me').catch(() => ({logged_in: true}));
   if (!me.logged_in) return showLogin();
+  $('#logout').hidden = !me.password_set;
   if (!me.password_set) toast('No dashboard password is set: anyone on your network can control the rigs. Rerun the hub setup to add one.', true);
   refresh();
 })();

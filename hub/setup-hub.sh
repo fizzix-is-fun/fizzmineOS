@@ -12,6 +12,7 @@ set -euo pipefail
 REPO="https://github.com/fizzix-is-fun/fizzmineOS.git"
 SRC=/opt/fizzmine/src
 BRANCH=main TS_KEY=""
+ARGS=("$@")
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -70,6 +71,12 @@ else
   git clone -q -b "$BRANCH" "$REPO" "$SRC"
 fi
 
+# The copy of this script that's running may be older than the one just pulled; run the new one.
+if [ -z "${FIZZ_REEXEC:-}" ] && ! cmp -s "$0" "$SRC/hub/setup-hub.sh" 2>/dev/null; then
+  say "Setup script was updated, running the new version"
+  FIZZ_REEXEC=1 exec bash "$SRC/hub/setup-hub.sh" "${ARGS[@]}"
+fi
+
 CONF="$SRC/hub/config/hub.toml"
 if [ ! -f "$CONF" ]; then
   mkdir -p "$SRC/hub/config"
@@ -96,8 +103,8 @@ echo "  curl -fsSL http://\$IP:8780/install.sh | sudo bash -s -- --key \$KEY"
 EOF
 chmod 700 /usr/local/bin/fizzhub-key
 
-for i in $(seq 1 30); do curl -fs http://127.0.0.1:8780/api/rigs >/dev/null && break; sleep 2; done
-curl -fs http://127.0.0.1:8780/api/rigs >/dev/null || die "hub didn't come up; check: docker compose -f $SRC/hub/compose.yaml logs"
+for i in $(seq 1 30); do curl -fs http://127.0.0.1:8780/api/me >/dev/null && break; sleep 2; done
+curl -fs http://127.0.0.1:8780/api/me >/dev/null || die "hub didn't come up; check: docker compose -f $SRC/hub/compose.yaml logs"
 
 IP=$(hostname -I | awk '{print $1}')
 say "Hub is running: http://$IP:8780"

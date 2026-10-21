@@ -1,6 +1,6 @@
 #!/bin/bash
 # fizzmineOS rig installer. The hub serves this file with its own address filled in, so on a
-# fresh Ubuntu Server 24.04 rig you only run:
+# fresh Ubuntu Server 26.04 rig you only run:
 #
 #   curl -fsSL http://<hub>:8780/install.sh | sudo bash -s -- --key <enroll key>
 #

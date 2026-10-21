@@ -16,7 +16,7 @@ tests/   pytest suite, runs without a GPU
 Step-by-step guide: [docs/install-guide.md](docs/install-guide.md). Short version:
 
 ```bash
-# on the hub (mini PC, Ubuntu Server 24.04)
+# on the hub (mini PC, Ubuntu Server 26.04)
 curl -fsSL https://raw.githubusercontent.com/fizzix-is-fun/fizzmineOS/main/hub/setup-hub.sh | sudo bash
 
 # on each rig: the hub prints this command with its address and enroll key (sudo fizzhub-key)

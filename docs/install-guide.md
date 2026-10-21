@@ -4,7 +4,7 @@ You set up the hub once on the mini PC. After that, each rig is a fresh Ubuntu i
 
 ## What you need
 
-- A USB stick (8 GB or larger) and [Ubuntu Server 24.04 LTS](https://ubuntu.com/download/server)
+- A USB stick (8 GB or larger) and [Ubuntu Server 26.04 LTS (24.04 also works)](https://ubuntu.com/download/server)
 - [balenaEtcher](https://etcher.balena.io/) or Rufus to write the USB stick
 - A Tailscale account, optional but recommended for reaching rigs from outside the house
 
@@ -16,7 +16,7 @@ You set up the hub once on the mini PC. After that, each rig is a fresh Ubuntu i
 
 ## 2. Set up the hub (mini PC)
 
-1. Write Ubuntu Server 24.04 to the USB stick and boot the mini PC from it.
+1. Write Ubuntu Server 26.04 to the USB stick and boot the mini PC from it.
 2. Go through the installer with the defaults. On these two screens:
    - **Profile**: pick a username and password you'll remember.
    - **SSH**: tick **Install OpenSSH server**.
@@ -40,7 +40,7 @@ You set up the hub once on the mini PC. After that, each rig is a fresh Ubuntu i
 
 ### A fresh rig (including the old 8-slot boards)
 
-1. Install Ubuntu Server 24.04 the same way as the hub, with **Install OpenSSH server** ticked.
+1. Install Ubuntu Server 26.04 the same way as the hub, with **Install OpenSSH server** ticked.
    - Old boards: if the USB stick won't boot, look in the BIOS for "Legacy" or "CSM" boot. Ubuntu supports both.
    - With many GPUs on risers, installing with only one card plugged in can be easier; add the rest afterwards.
 2. Connect from your main PC with `ssh <username>@<rig-ip>`.

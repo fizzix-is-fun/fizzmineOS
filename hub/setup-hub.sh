@@ -49,9 +49,11 @@ export DEBIAN_FRONTEND=noninteractive
 apt-get update -q || echo "  (apt update reported a problem above; continuing)"
 apt-get install -y -q git curl ca-certificates openssl >/dev/null
 
-if ! command -v docker >/dev/null; then
+if ! docker compose version >/dev/null 2>&1; then
   say "Installing Docker"
-  curl -fsSL https://get.docker.com | sh
+  # Ubuntu's own packages: no extra repo or download site to reach
+  apt-get install -y -q docker.io docker-compose-v2 >/dev/null
+  systemctl enable --now docker
 fi
 
 if [ -n "$TS_KEY" ]; then

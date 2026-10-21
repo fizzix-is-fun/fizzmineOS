@@ -1,0 +1,2 @@
+nvidia-ml-py>=12.535
+websockets>=13

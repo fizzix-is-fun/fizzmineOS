@@ -1,0 +1,13 @@
+[Unit]
+Description=fizzmineOS rig agent
+After=network-online.target nvidia-persistenced.service
+Wants=network-online.target
+
+[Service]
+WorkingDirectory=/opt/fizzmine/agent
+ExecStart=/opt/fizzmine/venv/bin/python -m fizzagent --config /etc/fizzmine/agent.toml
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

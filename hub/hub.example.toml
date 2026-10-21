@@ -1,7 +1,9 @@
-# Copy to /etc/fizzmine/hub.toml (or ./config/hub.toml when using docker compose).
+# Copy to hub/config/hub.toml (setup-hub.sh does this for you).
 db = "/var/lib/fizzmine/hub.db"
 
-# One line per rig: name = token. Generate a token with: openssl rand -hex 16
+# Rigs join with: curl -fsSL http://<hub>:8780/install.sh | sudo bash -s -- --key <enroll_key>
+# Generate one with: openssl rand -hex 16
+enroll_key = "change-me"
+
+# Optional: rigs set up by hand, name = token. Enrolled rigs don't need a line here.
 [rigs]
-babyarm = "change-me"
-armadillo = "change-me-too"

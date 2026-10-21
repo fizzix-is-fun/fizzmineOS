@@ -5,34 +5,25 @@ Home GPU rig control center: a small agent on each rig reports GPU and miner sta
 Phase 1 is read-only: it watches temps, fans, power, clocks, VRAM and WildRig hashrate. Nothing changes clocks or fans yet.
 
 ```
-agent/   rig service (Python, NVML), installer and systemd unit
-hub/     control center (FastAPI + SQLite) and the dashboard, runs in Docker
+agent/   rig service (Python, NVML), rig installer and systemd unit
+hub/     control center (FastAPI + SQLite), the dashboard and the hub setup script; runs in Docker
+docs/    install guide
 tests/   pytest suite, runs without a GPU
 ```
 
-## Run the hub
+## Install
 
-On the box that will host it (any machine on the LAN):
-
-```bash
-cd hub
-mkdir -p config && cp hub.example.toml config/hub.toml   # add one token per rig: openssl rand -hex 16
-docker compose up -d --build
-```
-
-Dashboard: `http://<hub-ip>:8780`
-
-## Install the agent on a rig
+Step-by-step guide: [docs/install-guide.md](docs/install-guide.md). Short version:
 
 ```bash
-git clone https://github.com/fizzix-is-fun/fizzmineOS && cd fizzmineOS
-sudo ./agent/install.sh
-sudo nano /etc/fizzmine/agent.toml     # rig name, hub_url = "ws://<hub-ip>:8780", token
-sudo systemctl restart fizzagent
-journalctl -u fizzagent -f
+# on the hub (mini PC, Ubuntu Server 24.04)
+curl -fsSL https://raw.githubusercontent.com/fizzix-is-fun/fizzmineOS/main/hub/setup-hub.sh | sudo bash
+
+# on each rig: the hub prints this command with its address and enroll key (sudo fizzhub-key)
+curl -fsSL http://<hub-ip>:8780/install.sh | sudo bash -s -- --key <enroll-key>
 ```
 
-For hashrate, add `--api-port 60050` to the wildrig command in `/usr/local/bin/mine`. When the miner isn't running the rig shows as "AI / idle".
+The rig installer sets up Tailscale (`--tailscale-key`), the NVIDIA driver (`--driver recommended|580|keep|skip`) and the agent, then enrolls the rig with the hub. Rigs only run the agent (about 30 MB of RAM) and the miner, so 2011-era dual-core mining boards with 4 GB are fine.
 
 ## Try it without a GPU
 
@@ -40,14 +31,16 @@ For hashrate, add `--api-port 60050` to the wildrig command in `/usr/local/bin/m
 pip install fastapi uvicorn websockets nvidia-ml-py pytest
 python -m pytest tests
 (cd hub && FIZZHUB_CONFIG=hub.example.toml FIZZHUB_DB=/tmp/hub.db uvicorn fizzhub.app:app --port 8780) &
-# agent.toml with rig = "babyarm", hub_url = "ws://127.0.0.1:8780", token = "change-me"
+# enroll a test rig: curl -X POST localhost:8780/api/enroll -H "Content-Type: application/json" -d '{"key":"change-me","rig":"test"}'
+# then write an agent.toml with rig = "test", hub_url = "ws://127.0.0.1:8780" and the returned token
 (cd agent && python -m fizzagent --config /path/to/agent.toml --fake)
 ```
 
 ## Roadmap
 
-1. Watch (this): live stats and 7 days of history
-2. Control: mine/AI toggle, power, clock locks, offsets and fan targets per card
-3. Flight sheets: saved miner + pool + wallet + tuning, pushed to rigs
-4. Safety and alerts: watchdog, fallback to stock clocks, notifications
-5. Automation: pause mining while the AI is in use
+1. Watch: live stats and 7 days of history
+2. One-command setup for the hub and rigs
+3. Control: mine/AI toggle, power, clock locks, offsets and fan targets per card
+4. Flight sheets: saved miner + pool + wallet + tuning, pushed to rigs
+5. Safety and alerts: watchdog, fallback to stock clocks, notifications
+6. Automation: pause mining while the AI is in use

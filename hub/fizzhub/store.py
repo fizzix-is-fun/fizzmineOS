@@ -1,5 +1,6 @@
 """SQLite history of rig snapshots. One row per rig per report, kept for KEEP_DAYS."""
 import json
+import secrets
 import sqlite3
 import time
 
@@ -13,6 +14,17 @@ class Store:
         self.db.execute(
             "CREATE TABLE IF NOT EXISTS samples (rig TEXT, ts REAL, hashrate REAL, power REAL, max_temp REAL, data TEXT)")
         self.db.execute("CREATE INDEX IF NOT EXISTS samples_rig_ts ON samples (rig, ts)")
+        self.db.execute("CREATE TABLE IF NOT EXISTS rigs (name TEXT PRIMARY KEY, token TEXT, enrolled_at REAL, info TEXT)")
+
+    def enroll(self, name, info):
+        """Registers a rig (or re-registers it after a reinstall) and returns its new token."""
+        token = secrets.token_hex(16)
+        self.db.execute("INSERT OR REPLACE INTO rigs VALUES (?, ?, ?, ?)", (name, token, time.time(), json.dumps(info)))
+        self.db.commit()
+        return token
+
+    def rig_tokens(self):
+        return dict(self.db.execute("SELECT name, token FROM rigs"))
 
     def add(self, snap):
         gpus = snap.get("gpus") or []

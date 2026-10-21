@@ -98,6 +98,7 @@ class Agent:
             "type": "stats", "rig": self.rig, "ts": time.time(), "gpus": cards, "miner": stats,
             "agent": {"mode": self.state["mode"], "flight_sheet": fs.get("name") if fs else None,
                       "miner_running": self.runner.running(), "ai": self.state["ai"],
+                      "gpu_error": getattr(self.gpus, "error", None),
                       "watchdog": {**self.watchdog.settings, "status": self.watchdog.status}},
         }
 
@@ -120,6 +121,10 @@ class Agent:
         if self.rebooting:
             return
         snap = self.snapshot()
+        if getattr(self.gpus, "error", None):
+            # no driver (a driver install in progress): restarts and reboots wouldn't help
+            self.watchdog.status = "waiting: " + self.gpus.error
+            return
         m = snap["miner"]
         actions = self.watchdog.tick(
             time.time(), self.state["mode"] == "mining", self.runner.running(), self.runner.started_at,

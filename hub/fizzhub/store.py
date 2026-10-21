@@ -15,6 +15,23 @@ class Store:
             "CREATE TABLE IF NOT EXISTS samples (rig TEXT, ts REAL, hashrate REAL, power REAL, max_temp REAL, data TEXT)")
         self.db.execute("CREATE INDEX IF NOT EXISTS samples_rig_ts ON samples (rig, ts)")
         self.db.execute("CREATE TABLE IF NOT EXISTS rigs (name TEXT PRIMARY KEY, token TEXT, enrolled_at REAL, info TEXT)")
+        # saved setups: kind is "flight_sheet" or "oc_profile"
+        self.db.execute("CREATE TABLE IF NOT EXISTS saved (kind TEXT, name TEXT, data TEXT, PRIMARY KEY (kind, name))")
+
+    def save(self, kind, name, data):
+        self.db.execute("INSERT OR REPLACE INTO saved VALUES (?, ?, ?)", (kind, name, json.dumps(data)))
+        self.db.commit()
+
+    def saved(self, kind):
+        return [json.loads(d) for (d,) in self.db.execute("SELECT data FROM saved WHERE kind = ? ORDER BY name", (kind,))]
+
+    def get_saved(self, kind, name):
+        row = self.db.execute("SELECT data FROM saved WHERE kind = ? AND name = ?", (kind, name)).fetchone()
+        return json.loads(row[0]) if row else None
+
+    def delete_saved(self, kind, name):
+        self.db.execute("DELETE FROM saved WHERE kind = ? AND name = ?", (kind, name))
+        self.db.commit()
 
     def enroll(self, name, info):
         """Registers a rig (or re-registers it after a reinstall) and returns its new token."""

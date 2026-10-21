@@ -1,4 +1,4 @@
-"""Reads per-card stats from NVML. Read-only: nothing here changes clocks or fans."""
+"""Per-card stats and overclock settings through NVML (the agent runs as root to set them)."""
 import random
 import re
 import subprocess
@@ -78,12 +78,58 @@ class NvmlGpus:
             })
         return cards
 
+    # --- overclocking. Each field set to a number applies it; None puts that setting back to stock.
+
+    def apply_oc(self, i, oc):
+        h, errors = self.handles[i], []
+
+        def do(field, fn):
+            try:
+                fn()
+            except Exception as e:
+                errors.append(f"{field}: {e}")
+
+        pl = oc.get("power_w")
+        do("power", lambda: nv.nvmlDeviceSetPowerManagementLimit(
+            h, int(pl * 1000) if pl else nv.nvmlDeviceGetPowerManagementDefaultLimit(h)))
+        core = oc.get("core_lock_mhz")
+        do("core lock", lambda: nv.nvmlDeviceSetGpuLockedClocks(h, core, core) if core else nv.nvmlDeviceResetGpuLockedClocks(h))
+        mem = oc.get("mem_lock_mhz")
+        do("mem lock", lambda: nv.nvmlDeviceSetMemoryLockedClocks(h, mem, mem) if mem else nv.nvmlDeviceResetMemoryLockedClocks(h))
+        do("core offset", lambda: nv.nvmlDeviceSetGpcClkVfOffset(h, int(oc.get("core_offset_mhz") or 0)))
+        do("mem offset", lambda: nv.nvmlDeviceSetMemClkVfOffset(h, int(oc.get("mem_offset_mhz") or 0)))
+        return errors
+
+    def temp(self, i):
+        return _try(nv.nvmlDeviceGetTemperature, self.handles[i], nv.NVML_TEMPERATURE_GPU)
+
+    def set_fan(self, i, pct):
+        """pct=None hands the fans back to the driver's automatic curve."""
+        h = self.handles[i]
+        for f in range(_try(nv.nvmlDeviceGetNumFans, h, default=0) or 0):
+            if pct is None:
+                _try(nv.nvmlDeviceSetDefaultFanSpeed_v2, h, f)
+            else:
+                _try(nv.nvmlDeviceSetFanSpeed_v2, h, f, int(pct))
+
 
 class FakeGpus:
     """Two pretend cards, for testing the agent and hub without a GPU."""
 
     def __init__(self, names=("NVIDIA GeForce RTX 5060 Ti", "NVIDIA GeForce RTX 5060 Ti")):
         self.names = names
+        self.oc = [{} for _ in names]
+        self.fan = [None for _ in names]
+
+    def apply_oc(self, i, oc):
+        self.oc[i] = dict(oc)
+        return []
+
+    def temp(self, i):
+        return 66
+
+    def set_fan(self, i, pct):
+        self.fan[i] = pct
 
     def read(self):
         return [{
@@ -94,13 +140,13 @@ class FakeGpus:
             "uuid": f"GPU-fake-{i}",
             "bus_id": f"00000000:0{i + 1}:00.0",
             "temp_c": random.randint(58, 72),
-            "fan_pct": random.randint(40, 70),
+            "fan_pct": self.fan[i] if self.fan[i] is not None else random.randint(40, 70),
             "power_w": round(random.uniform(90, 100), 1),
-            "power_limit_w": 140.0,
-            "core_mhz": 2685,
-            "mem_mhz": 810,
-            "core_offset_mhz": 495,
-            "mem_offset_mhz": 0,
+            "power_limit_w": float(self.oc[i].get("power_w") or 180),
+            "core_mhz": self.oc[i].get("core_lock_mhz") or 2685,
+            "mem_mhz": self.oc[i].get("mem_lock_mhz") or 14001,
+            "core_offset_mhz": self.oc[i].get("core_offset_mhz") or 0,
+            "mem_offset_mhz": self.oc[i].get("mem_offset_mhz") or 0,
             "util_pct": 100,
             "vram_used_mb": 1200,
             "vram_total_mb": 16311,

@@ -39,6 +39,9 @@
   .hot { color:var(--warn); } .very-hot { color:var(--bad); }
   svg.spark { width:100%; height:40px; margin-top:8px; display:block; }
   .empty, .hint { color:var(--quiet); }
+  .wd { font-size:12px; padding:2px 8px; border-radius:99px; border:1px solid var(--warn); color:var(--warn); }
+  .wd.quiet { border-color:var(--line); color:var(--quiet); }
+  .ev-alert { color:var(--warn); } .ev-info { color:var(--quiet); }
   .hint { font-size:12px; }
   button.b, a.b { text-decoration:none; display:inline-block; }
   button.b, a.b { background:var(--panel2); color:var(--text); border:1px solid var(--line); padding:5px 10px; border-radius:6px; cursor:pointer; font:inherit; font-size:13px; }
@@ -70,6 +73,7 @@
     <button data-tab="rigs" class="on">Rigs</button>
     <button data-tab="sheets">Flight sheets</button>
     <button data-tab="profiles">OC profiles</button>
+    <button data-tab="alerts">Alerts</button>
   </nav>
   <span class="totals" id="totals"></span>
   <span class="spacer"></span>
@@ -86,9 +90,11 @@
 <main id="view-rigs"><p class="empty">Loading…</p></main>
 <main id="view-sheets" hidden></main>
 <main id="view-profiles" hidden></main>
+<main id="view-alerts" hidden></main>
 
 <dialog id="ocDialog"></dialog>
 <dialog id="aiDialog"></dialog>
+<dialog id="wdDialog"></dialog>
 <div id="toast"></div>
 
 <script>
@@ -100,6 +106,7 @@ const offset = o => o ? ` <span class="off">(${o > 0 ? '+' : ''}${o})</span>` : 
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const model = n => (n || '').replace(/^NVIDIA (GeForce )?/, '');
 
+const VIEWS = ['rigs', 'sheets', 'profiles', 'alerts'];
 let rigs = [], history = {}, lastHist = 0, tab = 'rigs', busy = new Set();
 
 function toast(msg, err) {
@@ -135,7 +142,7 @@ async function rigCmd(rig, cmd, args = {}) {
 // ---------- login ----------
 function showLogin() {
   $('#login').style.display = 'grid';
-  for (const v of ['rigs', 'sheets', 'profiles']) $('#view-' + v).hidden = true;
+  for (const v of VIEWS) $('#view-' + v).hidden = true;
   $('#tabs').hidden = true;
 }
 $('#loginForm').onsubmit = async e => {
@@ -152,9 +159,10 @@ $('#logout').onclick = async () => { await api('api/logout', {method: 'POST'}); 
 function show(t) {
   tab = t;
   for (const b of document.querySelectorAll('#tabs button')) b.classList.toggle('on', b.dataset.tab === t);
-  for (const v of ['rigs', 'sheets', 'profiles']) $('#view-' + v).hidden = v !== t;
+  for (const v of VIEWS) $('#view-' + v).hidden = v !== t;
   if (t === 'sheets') renderSheets();
   if (t === 'profiles') renderProfiles();
+  if (t === 'alerts') renderAlerts().catch(e => toast(e.message, true));
 }
 for (const b of document.querySelectorAll('#tabs button')) b.onclick = () => show(b.dataset.tab);
 
@@ -212,6 +220,7 @@ function rigCard(r, hist) {
       <a class="b" href="console.html?rig=${encodeURIComponent(r.rig)}" target="_blank" rel="noopener">Miner console</a>
       <button class="b" data-oc="${esc(r.rig)}">Overclock</button>
       <button class="b" data-ai="${esc(r.rig)}">AI mode settings</button>
+      <button class="b" data-wd="${esc(r.rig)}">Watchdog</button>
       ${btn(r.rig, 'reboot', 'Reboot', 'danger')}
       <span class="hint">Flight sheet: ${a.flight_sheet ? esc(a.flight_sheet) : 'none yet (push one from Flight sheets)'}</span>
     </div>` : '';
@@ -225,6 +234,8 @@ function rigCard(r, hist) {
       <span class="stat">Efficiency <b>${eff}</b></span>
       <span class="stat">Shares <b>${m.running ? `${fmt(m.shares_accepted)} / ${fmt(m.shares_rejected)} rej` : '–'}</b></span>
       <span class="stat">Accepted <b>${mining ? share : '–'}</b></span>
+      ${r.online && a.watchdog && a.watchdog.status !== 'ok' ? `<span class="wd">Watchdog: ${esc(a.watchdog.status)}</span>` : ''}
+      ${r.online && a.watchdog && !a.watchdog.enabled ? '<span class="wd quiet">Watchdog off</span>' : ''}
     </div>
     ${controls}
     ${r.gpus.length ? `<table class="gpus"><thead><tr><th>GPU</th><th>Temp</th><th>Fan</th><th>Power</th><th class="wide">Core</th><th class="wide">Mem</th><th class="wide">VRAM</th><th>Hashrate</th><th>Shares</th></tr></thead><tbody>${rows}</tbody></table>`
@@ -246,6 +257,7 @@ $('#view-rigs').onclick = e => {
   if (!b) return;
   if (b.dataset.oc) return openOc(b.dataset.oc);
   if (b.dataset.ai) return openAi(b.dataset.ai);
+  if (b.dataset.wd) return openWatchdog(b.dataset.wd);
   if (b.dataset.cmd) {
     if (b.dataset.cmd === 'reboot' && !confirm(`Reboot ${b.dataset.rig}?`)) return;
     rigCmd(b.dataset.rig, b.dataset.cmd, JSON.parse(b.dataset.args || '{}'));
@@ -330,6 +342,65 @@ function openAi(rigName) {
     rigCmd(rigName, 'set_ai', {start_cmd: f.elements.start_cmd.value, stop_cmd: f.elements.stop_cmd.value});
   };
   d.showModal();
+}
+
+// ---------- watchdog ----------
+const WD_FIELDS = [
+  ['min_hashrate_ths', 'Lowest OK hashrate (TH/s)', '0 = only when there is none'],
+  ['low_for_s', 'Act after it has been low for (seconds)', '180'],
+  ['grace_s', 'Time a miner gets to start hashing (seconds)', '300'],
+  ['restarts_before_reboot', 'Miner restarts before rebooting the rig', '2'],
+  ['temp_limit_c', 'Stop the miner when a card reaches (°C)', '85'],
+  ['temp_resume_c', 'Start it again when every card is at (°C)', '65'],
+];
+
+function openWatchdog(rigName) {
+  const r = rigs.find(x => x.rig === rigName), w = (r.agent || {}).watchdog || {};
+  const d = $('#wdDialog');
+  d.innerHTML = `<form method="dialog" id="wdForm">
+    <h2>Watchdog · ${esc(rigName)}</h2>
+    <p class="hint">Runs on the rig while it's mining, even when the hub is down. Low or no hashrate restarts the miner, then reboots the rig. If it's still failing within an hour of that reboot, it stops trying and alerts you. A hot card stops the miner until the cards cool down. Alerts go to Discord (set up under Alerts).</p>
+    <label class="row"><input type="checkbox" name="enabled" ${w.enabled !== false ? 'checked' : ''}> Watchdog on</label>
+    <div class="form">${WD_FIELDS.map(([k, l, ph]) => `<label class="f">${l}<input type="number" step="any" name="${k}" value="${w[k] ?? ''}" placeholder="${ph}"></label>`).join('')}</div>
+    <div class="row"><button class="b primary" value="save">Save</button><button class="b" value="cancel" formnovalidate>Cancel</button></div>
+  </form>`;
+  d.onclose = () => {
+    if (d.returnValue !== 'save') return;
+    const f = $('#wdForm'), args = {enabled: f.elements.enabled.checked};
+    for (const [k] of WD_FIELDS) if (f.elements[k].value !== '') args[k] = Number(f.elements[k].value);
+    rigCmd(rigName, 'set_watchdog', args);
+  };
+  d.showModal();
+}
+
+// ---------- alerts: Discord and recent events ----------
+async function renderAlerts() {
+  const v = $('#view-alerts');
+  const [s, events] = await Promise.all([api('api/settings'), api('api/events?limit=100')]);
+  const when = ts => new Date(ts * 1000).toLocaleString([], {month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'});
+  v.innerHTML = `<section class="panel">
+    <h2>Discord</h2>
+    <p class="hint">In Discord: channel settings → Integrations → Webhooks → New Webhook → Copy Webhook URL. One for each channel.</p>
+    <form class="form" id="dcForm">
+      <label class="f wide2">Alerts channel (the one you watch): watchdog restarts, reboots, hot cards, rigs going offline<input name="alerts_url" value="${esc(s.alerts_url)}" placeholder="https://discord.com/api/webhooks/…"></label>
+      <label class="f wide2">Status channel: recoveries, rigs back online, and a summary of every rig<input name="status_url" value="${esc(s.status_url)}" placeholder="https://discord.com/api/webhooks/…"></label>
+      <label class="f">Summary every (minutes, 0 = never)<input type="number" name="status_every_min" value="${esc(s.status_every_min)}"></label>
+      <div class="row wide2"><button class="b primary">Save</button><button class="b" type="button" id="dcTest">Send a test</button></div>
+    </form>
+  </section>
+  <section class="panel"><h2>Recent events</h2>
+    ${events.length ? `<table><tbody>${events.map(e => `<tr><td style="text-align:left">${when(e.ts)}</td><td style="text-align:left">${esc(e.rig)}</td><td style="text-align:left;white-space:normal" class="ev-${e.level}">${esc(e.msg)}</td></tr>`).join('')}</tbody></table>`
+      : '<p class="empty">Nothing yet. Watchdog actions and rigs going offline show up here.</p>'}
+  </section>`;
+  const read = () => { const f = $('#dcForm'); return {alerts_url: f.elements.alerts_url.value, status_url: f.elements.status_url.value, status_every_min: Number(f.elements.status_every_min.value || 0)}; };
+  $('#dcForm').onsubmit = async e => {
+    e.preventDefault();
+    try { await api('api/settings', {method: 'PUT', body: read()}); toast('Saved'); } catch (err) { toast(err.message, true); }
+  };
+  $('#dcTest').onclick = async () => {
+    try { await api('api/settings', {method: 'PUT', body: read()}); await api('api/settings/test', {method: 'POST'}); toast('Sent a test message to each channel'); }
+    catch (err) { toast(err.message, true); }
+  };
 }
 
 // ---------- flight sheets ----------

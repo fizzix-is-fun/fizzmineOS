@@ -10,6 +10,7 @@ import socket
 import subprocess
 import time
 import tomllib
+from collections import deque
 from pathlib import Path
 
 import websockets
@@ -18,6 +19,7 @@ from .fans import FanController
 from .gpu import FakeGpus, NvmlGpus
 from .miner import FakeMiner, WildRig, attach_to_gpus
 from .runner import MinerRunner, read_log
+from .watchdog import Watchdog, clean_settings
 
 log = logging.getLogger("fizzagent")
 
@@ -49,11 +51,14 @@ class Agent:
         self.fans = FanController(self.gpus)
         self.fake = fake
         self.log_path = None  # default: runner.LOG_FILE
-        self.state = {"mode": "stopped", "flight_sheet": None, "oc": {}, "ai": {"start_cmd": "", "stop_cmd": ""}}
+        self.state = {"mode": "stopped", "flight_sheet": None, "oc": {}, "ai": {"start_cmd": "", "stop_cmd": ""}, "watchdog": {}}
         try:
             self.state.update(json.loads(self.state_path.read_text()))
         except (OSError, ValueError):
             pass
+        self.watchdog = Watchdog(self.state)
+        self.rebooting = False
+        self.events = deque(maxlen=50)  # for the hub (Discord); kept while the hub is unreachable
 
     def save(self):
         self.state_path.parent.mkdir(parents=True, exist_ok=True)
@@ -91,7 +96,8 @@ class Agent:
         return {
             "type": "stats", "rig": self.rig, "ts": time.time(), "gpus": cards, "miner": stats,
             "agent": {"mode": self.state["mode"], "flight_sheet": fs.get("name") if fs else None,
-                      "miner_running": self.runner.running(), "ai": self.state["ai"]},
+                      "miner_running": self.runner.running(), "ai": self.state["ai"],
+                      "watchdog": {**self.watchdog.settings, "status": self.watchdog.status}},
         }
 
     def run_hook(self, which):
@@ -104,10 +110,40 @@ class Agent:
 
     # --- the things the dashboard can ask for
 
+    def event(self, level, msg):
+        log.log(logging.WARNING if level == "alert" else logging.INFO, "watchdog: %s", msg)
+        self.events.append({"type": "event", "level": level, "msg": msg, "ts": time.time()})
+
+    def watch(self):
+        """One watchdog look (every few seconds while mining); carries out what it decides."""
+        if self.rebooting:
+            return
+        snap = self.snapshot()
+        m = snap["miner"]
+        actions = self.watchdog.tick(
+            time.time(), self.state["mode"] == "mining", self.runner.running(), self.runner.started_at,
+            m.get("hashrate_hs") if m.get("running") else None, [g.get("temp_c") for g in snap["gpus"]])
+        for action, level, msg in actions:
+            self.event(level, msg)
+            if action == "stop":
+                self.runner.stop()
+            elif action == "start":
+                self.runner.start(self.state["flight_sheet"])
+            elif action == "restart":
+                self.runner.stop()
+                self.runner.start(self.state["flight_sheet"])
+            elif action == "reboot":
+                self.save()  # keeps the reboot time, so a rig that's still failing afterwards doesn't loop
+                self.rebooting = True
+                if not self.fake:
+                    # the wait lets the alert reach the hub first
+                    subprocess.Popen(["bash", "-c", "sleep 10; systemctl reboot"])
+
     def start_mining(self):
         fs = self.state["flight_sheet"]
         if not fs:
             raise ValueError("no flight sheet on this rig yet")
+        self.watchdog.reset()
         notes = [n for n in [self.run_hook("stop_cmd")] if n]
         notes += self.apply_saved_oc()
         self.state["mode"] = "mining"
@@ -163,6 +199,11 @@ class Agent:
                 note = self.run_hook("start_cmd")
                 return "AI mode: " + msg + (f"; {note}" if note else "")
             raise ValueError("mode must be mining or ai")
+        if cmd == "set_watchdog":
+            self.state["watchdog"] = clean_settings(args)
+            self.watchdog.reset()
+            self.save()
+            return "saved"
         if cmd == "set_ai":
             self.state["ai"] = {"start_cmd": args.get("start_cmd", ""), "stop_cmd": args.get("stop_cmd", "")}
             self.save()
@@ -203,6 +244,9 @@ async def run(cfg, agent):
         while True:
             agent.tick()
             await ws.send(json.dumps(await asyncio.to_thread(agent.snapshot)))
+            while agent.events:
+                await ws.send(json.dumps(agent.events[0]))
+                agent.events.popleft()
             await asyncio.sleep(interval)
 
     busy = asyncio.Lock()  # one rig-changing command at a time
@@ -236,6 +280,21 @@ async def run(cfg, agent):
             t = asyncio.create_task(do_command(ws, msg))
             running.add(t)
             t.add_done_callback(running.discard)
+
+    async def watch_forever():
+        # runs whether or not the hub is reachable
+        while True:
+            await asyncio.sleep(interval)
+            if agent.state["mode"] != "mining":
+                agent.watchdog.reset()
+                continue
+            try:
+                async with busy:
+                    await asyncio.to_thread(agent.watch)
+            except Exception:
+                log.exception("watchdog")
+
+    watcher = asyncio.create_task(watch_forever())  # noqa: F841 (kept so it isn't garbage-collected)
 
     # websockets' connect() as an async iterator reconnects with backoff when the hub goes away
     async for ws in websockets.connect(url, open_timeout=10):

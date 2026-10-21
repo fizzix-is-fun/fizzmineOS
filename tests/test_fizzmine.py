@@ -161,6 +161,8 @@ def test_oc_saved_and_applied_only_while_mining(tmp_path):
     assert a.state["mode"] == "mining" and a.runner.running()
     assert a.gpus.oc[0] == {"power_w": 140, "core_lock_mhz": 2685, "core_offset_mhz": 495}
     snap = a.snapshot()
+    assert snap["agent"]["watchdog"]["status"] == "ok"
+    del snap["agent"]["watchdog"]
     assert snap["agent"] == {"mode": "mining", "flight_sheet": "pearl", "miner_running": True, "ai": {"start_cmd": "", "stop_cmd": ""}}
     assert snap["gpus"][0]["oc"]["power_w"] == 140 and snap["gpus"][1]["oc"] is None
     # clearing a card's OC puts it back to stock right away
@@ -307,3 +309,75 @@ def test_miner_screen_and_keys(tmp_path):
     assert agent.handle("miner_keys", {"keys": ["h", "Enter"]}) == "sent"
     with pytest.raises(ValueError):
         agent.handle("miner_keys", {"keys": ["C-c"]})
+
+
+def test_watchdog_restarts_then_reboots_then_gives_up():
+    from fizzagent.watchdog import Watchdog
+    state = {"watchdog": {"low_for_s": 60, "grace_s": 100}}
+    w = Watchdog(state)
+    look = lambda now, hr, temps=(60, 60), running=True: w.tick(now, True, running, 0, hr, list(temps))
+    assert look(50, None) == []                       # still starting
+    assert look(200, 180e12) == []                    # fine
+    assert look(210, None) == []                      # low, but not for long yet
+    assert look(280, None)[0][0] == "restart"
+    assert look(290, 0) == [] and look(360, 0)[0][0] == "restart"
+    acts = look(370, None) + look(440, None)
+    assert acts[0][0] == "reboot" and state["watchdog_reboot_ts"] == 440
+    # after the reboot (a fresh watchdog), still failing: two restarts, then it gives up instead of looping
+    w = Watchdog(state)
+    look = lambda now, hr: w.tick(now, True, True, 0, hr, [60])
+    assert [look(t, None) for t in (500, 570)][-1][0][0] == "restart"
+    look(580, None); assert look(650, None)[0][0] == "restart"
+    look(660, None); acts = look(730, None)
+    assert acts[0][0] is None and "leaving it alone" in acts[0][2] and w.gave_up
+    assert look(900, None) == []
+    assert look(910, 180e12) == [(None, "info", "hashrate is back (180.0 TH/s)")] and not w.gave_up
+
+
+def test_watchdog_floor_and_temperature():
+    from fizzagent.watchdog import Watchdog, clean_settings
+    w = Watchdog({"watchdog": {"min_hashrate_ths": 150, "low_for_s": 0, "grace_s": 0}})
+    assert w.tick(10, True, True, 0, 140e12, [60])[0][0] == "restart"
+    assert w.tick(20, True, True, 0, 160e12, [60]) == [(None, "info", "hashrate is back (160.0 TH/s)")]
+    assert w.tick(30, True, True, 0, 160e12, [60, 85])[0][:2] == ("stop", "alert")
+    assert w.tick(40, True, False, 0, None, [70, 60]) == []          # stopped, still warm: wait
+    assert w.tick(50, True, False, 0, None, [65, 60])[0][:2] == ("start", "info")
+    assert w.tick(60, True, False, 0, None, [60])[0][2] == "the miner had exited; started it again"
+    assert w.tick(70, False, False, 0, None, [60]) == []             # not mining: nothing to watch
+    with pytest.raises(ValueError):
+        clean_settings({"temp_limit_c": 70, "temp_resume_c": 75})
+
+
+def test_agent_carries_out_the_watchdog(tmp_path):
+    from fizzagent.__main__ import Agent
+    agent = Agent({"rig": "r1"}, fake=True, state_path=tmp_path / "state.json")
+    agent.handle("flight_sheet", {"flight_sheet": FS, "start": True})
+    agent.handle("set_watchdog", {"grace_s": 0, "low_for_s": 0, "min_hashrate_ths": 500})
+    agent.watch()  # the fake miner makes ~180 TH/s, under 500
+    assert agent.events[-1]["level"] == "alert" and "restarting the miner" in agent.events[-1]["msg"]
+    assert agent.runner.running()
+    assert agent.snapshot()["agent"]["watchdog"]["min_hashrate_ths"] == 500
+
+
+def test_hub_sends_events_to_discord(client):
+    import asyncio
+    import fizzhub.app as hub
+    sent = []
+    hub.notifier.post = lambda url, text: sent.append((url, text))
+    assert client.post("/api/settings/test").status_code == 400
+    assert client.put("/api/settings", json={"alerts_url": "http://x"}).status_code == 400
+    client.put("/api/settings", json={"alerts_url": "https://discord.com/api/webhooks/a", "status_url": "https://discord.com/api/webhooks/s", "status_every_min": 60})
+    assert client.post("/api/settings/test").json() == {"ok": True} and len(sent) == 2
+    token = client.post("/api/enroll", json={"key": "joinme", "rig": "r1"}).json()["token"]
+    with client.websocket_connect(f"/ws/agent?rig=r1&token={token}") as ws:
+        ws.send_json({"type": "stats", "gpus": [{"index": 0, "power_w": 100, "temp_c": 60}], "miner": {"running": True, "hashrate_hs": 93e12}})
+        ws.send_json({"type": "event", "level": "alert", "msg": "no hashrate: restarting the miner (1 of 2)"})
+        client.get("/api/me")  # lets the hub read both messages
+    assert sent[-1] == ("https://discord.com/api/webhooks/a", "\N{POLICE CARS REVOLVING LIGHT} **r1**: no hashrate: restarting the miner (1 of 2)")
+    assert client.get("/api/events").json()[0]["rig"] == "r1"
+    # offline alerts and the summary
+    seen, now = {}, hub.time.time()
+    asyncio.run(hub.check_rigs(seen, now - 3601, now))
+    assert sent[-1][0].endswith("/s") and "r1: 93.0 TH/s, 100 W, max 60 °C" in sent[-1][1]
+    asyncio.run(hub.check_rigs(seen, now, now + 600))
+    assert "offline" in sent[-1][1] and sent[-1][0].endswith("/a")

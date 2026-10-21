@@ -17,6 +17,16 @@ class Store:
         self.db.execute("CREATE TABLE IF NOT EXISTS rigs (name TEXT PRIMARY KEY, token TEXT, enrolled_at REAL, info TEXT)")
         # saved setups: kind is "flight_sheet" or "oc_profile"
         self.db.execute("CREATE TABLE IF NOT EXISTS saved (kind TEXT, name TEXT, data TEXT, PRIMARY KEY (kind, name))")
+        # watchdog and hub events (what went to Discord)
+        self.db.execute("CREATE TABLE IF NOT EXISTS events (ts REAL, rig TEXT, level TEXT, msg TEXT)")
+
+    def add_event(self, rig, level, msg, ts=None):
+        self.db.execute("INSERT INTO events VALUES (?, ?, ?, ?)", (ts or time.time(), rig, level, msg))
+        self.db.commit()
+
+    def events(self, limit=50):
+        rows = self.db.execute("SELECT ts, rig, level, msg FROM events ORDER BY ts DESC LIMIT ?", (limit,))
+        return [{"ts": ts, "rig": rig, "level": level, "msg": msg} for ts, rig, level, msg in rows]
 
     def save(self, kind, name, data):
         self.db.execute("INSERT OR REPLACE INTO saved VALUES (?, ?, ?)", (kind, name, json.dumps(data)))
@@ -66,4 +76,5 @@ class Store:
 
     def prune(self):
         self.db.execute("DELETE FROM samples WHERE ts < ?", (time.time() - KEEP_DAYS * 86400,))
+        self.db.execute("DELETE FROM events WHERE ts < ?", (time.time() - 30 * 86400,))
         self.db.commit()

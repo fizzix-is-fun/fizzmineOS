@@ -62,3 +62,22 @@ The dashboard replaces `mine`, `ai`, `clocks`, `gpuoffset` and `gpufans.py`. So 
 4. Make a flight sheet with the same pool, wallet, worker and `--pearlhash-kernel 2`, set your clocks under **Overclock**, and push it.
 
 The old commands still work if you need them; just don't run them while the dashboard has the rig mining.
+
+## Watchdog and temperature protection
+
+Each rig watches itself while it's mining, even when the hub is down. Click **Watchdog** on a rig to change its settings.
+
+- **No hashrate, or less than your floor:** once the miner has had 5 minutes to start, a hashrate that stays low for 3 minutes restarts the miner. After 2 restarts that don't help, the rig reboots. If it's still failing within an hour of that reboot, it stops trying and sends an alert, so a broken rig doesn't reboot all night. The floor is 0 by default, which only catches no hashrate at all (like a card that dropped off with an Xid error). Set it to, say, 150 TH/s on babyarm to catch a slow card too.
+- **Miner exited:** it's started again.
+- **Hot card:** at 85 °C the miner stops, and it starts again when every card is down to 65 °C.
+
+The rig card on the dashboard shows what the watchdog is doing when it isn't all well.
+
+## Discord alerts
+
+Under **Alerts**, paste a webhook URL for each channel (in Discord: channel settings → Integrations → Webhooks → New Webhook → Copy Webhook URL), save, and click **Send a test**.
+
+- **Alerts channel:** miner restarts, reboots, hot cards, the watchdog giving up, and rigs that stop reporting for 90 seconds.
+- **Status channel:** recoveries, rigs coming back online, and a summary of every rig every hour (change or turn off the interval there).
+
+The same tab lists recent events.

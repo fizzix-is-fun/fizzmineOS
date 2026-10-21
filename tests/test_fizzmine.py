@@ -381,3 +381,32 @@ def test_hub_sends_events_to_discord(client):
     assert sent[-1][0].endswith("/s") and "r1: 93.0 TH/s, 100 W, max 60 °C" in sent[-1][1]
     asyncio.run(hub.check_rigs(seen, now, now + 600))
     assert "offline" in sent[-1][1] and sent[-1][0].endswith("/a")
+
+
+def test_fizz_command_through_the_agent_socket(tmp_path, capsys):
+    import asyncio
+    import threading
+    from fizzagent import cli
+    from fizzagent.__main__ import Agent, run
+    agent = Agent({"rig": "r1"}, fake=True, state_path=tmp_path / "state.json")
+    agent.handle("flight_sheet", {"flight_sheet": FS, "start": True})
+    sock = str(tmp_path / "agent.sock")
+    # no hub at this address: the rig is still controllable
+    loop = asyncio.new_event_loop()
+    threading.Thread(target=loop.run_until_complete, args=(run({"hub_url": "ws://127.0.0.1:9", "token": "x"}, agent, sock),), daemon=True).start()
+    import time
+    for _ in range(50):
+        if (tmp_path / "agent.sock").exists():
+            break
+        time.sleep(0.1)
+    cli.main(["--socket", sock, "oc", "all", "--pl", "140", "--core-offset", "350"])
+    cli.main(["--socket", sock, "oc", "1", "--core-offset", "300", "--fan", "t65"])
+    cli.main(["--socket", sock, "oc"])
+    out = capsys.readouterr().out
+    assert "GPU 0 RTX 5060 Ti: PL 140 W, core +350" in out
+    assert "GPU 1 RTX 5060 Ti: PL 140 W, core +300, fan target 65 °C" in out
+    cli.main(["--socket", sock, "stop"])
+    assert not agent.runner.running() and agent.state["mode"] == "stopped"
+    cli.main(["--socket", sock, "status"])
+    assert "r1: stopped, miner stopped" in capsys.readouterr().out
+    assert cli.fan_setting("70%") == {"fan_mode": "fixed", "fan_value": 70} and cli.fan_setting("auto") == {"fan_mode": "auto"}

@@ -23,6 +23,7 @@ from .watchdog import Watchdog, clean_settings
 
 log = logging.getLogger("fizzagent")
 
+SOCKET = "/run/fizzmine/agent.sock"
 OC_FIELDS = ("power_w", "core_lock_mhz", "mem_lock_mhz", "core_offset_mhz", "mem_offset_mhz", "fan_mode", "fan_value")
 
 
@@ -216,6 +217,8 @@ class Agent:
             return {"screen": self.runner.screen(), "running": self.runner.running()}
         if cmd == "miner_keys":
             return self.runner.send_keys(list(args.get("keys") or []))
+        if cmd == "status":
+            return self.snapshot()
         if cmd == "reboot":
             if not self.fake:
                 subprocess.Popen(["bash", "-c", "sleep 2; systemctl reboot"])
@@ -235,7 +238,7 @@ class Agent:
             self.fans.tick(self.card_oc())
 
 
-async def run(cfg, agent):
+async def run(cfg, agent, socket_path=None):
     url = f"{cfg['hub_url'].rstrip('/')}/ws/agent?rig={agent.rig}&token={cfg['token']}"
     interval = cfg.get("interval_s", 5)
     await asyncio.to_thread(agent.boot)
@@ -296,6 +299,25 @@ async def run(cfg, agent):
 
     watcher = asyncio.create_task(watch_forever())  # noqa: F841 (kept so it isn't garbage-collected)
 
+    async def local_command(reader, writer):
+        # the fizz command on the rig: one JSON request per connection, same commands as the dashboard
+        try:
+            msg = json.loads(await reader.readline())
+            log.info("local command %s %s", msg.get("cmd"), msg.get("args"))
+            async with busy:
+                out = {"ok": True, "msg": await asyncio.to_thread(agent.handle, msg["cmd"], msg.get("args") or {})}
+        except Exception as e:
+            out = {"ok": False, "msg": str(e)}
+        writer.write((json.dumps(out) + "\n").encode())
+        await writer.drain()
+        writer.close()
+
+    if socket_path:
+        Path(socket_path).parent.mkdir(parents=True, exist_ok=True)
+        Path(socket_path).unlink(missing_ok=True)
+        local = await asyncio.start_unix_server(local_command, socket_path, limit=1_000_000)  # noqa: F841
+        Path(socket_path).chmod(0o600)  # root only: sudo fizz
+
     # websockets' connect() as an async iterator reconnects with backoff when the hub goes away
     async for ws in websockets.connect(url, open_timeout=10):
         log.info("connected to hub as %s", agent.rig)
@@ -318,11 +340,12 @@ def main():
     p.add_argument("--config", default="/etc/fizzmine/agent.toml")
     p.add_argument("--state", default="/etc/fizzmine/state.json")
     p.add_argument("--fake", action="store_true", help="pretend GPUs and miner, for testing")
+    p.add_argument("--socket", default=SOCKET, help="where the fizz command reaches the agent")
     args = p.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     with open(args.config, "rb") as f:
         cfg = tomllib.load(f)
-    asyncio.run(run(cfg, Agent(cfg, fake=args.fake, state_path=args.state)))
+    asyncio.run(run(cfg, Agent(cfg, fake=args.fake, state_path=args.state), args.socket))
 
 
 if __name__ == "__main__":

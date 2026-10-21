@@ -295,3 +295,15 @@ def test_console_reads_the_miner_log(client, tmp_path):
     assert out == {"text": "\x1b[32mshare accepted\x1b[0m\n", "offset": 24, "running": False}
     assert client.get("/api/rigs/r1/log?offset=0").status_code == 503  # rig gone
     assert client.get("/console.html").status_code == 200
+
+
+def test_miner_screen_and_keys(tmp_path):
+    from fizzagent.__main__ import Agent
+    agent = Agent({"rig": "r1"}, fake=True, state_path=tmp_path / "state.json")
+    assert agent.handle("miner_screen", {}) == {"screen": None, "running": False}
+    agent.runner.start({})
+    shown = agent.handle("miner_screen", {})
+    assert shown["running"] and "TH/s" in shown["screen"]
+    assert agent.handle("miner_keys", {"keys": ["h", "Enter"]}) == "sent"
+    with pytest.raises(ValueError):
+        agent.handle("miner_keys", {"keys": ["C-c"]})

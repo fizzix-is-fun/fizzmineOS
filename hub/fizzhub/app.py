@@ -173,6 +173,25 @@ async def rig_log(rig: str, offset: int | None = None):
     return res["msg"]
 
 
+@app.get("/api/rigs/{rig}/screen")
+async def rig_screen(rig: str):
+    """The miner's terminal as it looks right now."""
+    res = await send_command(rig, "miner_screen")
+    if not res["ok"]:
+        raise HTTPException(503, res["msg"])
+    return res["msg"]
+
+
+class Keys(BaseModel):
+    keys: list[str]
+
+
+@app.post("/api/rigs/{rig}/keys")
+async def rig_keys(rig: str, k: Keys):
+    """Keys typed in the console go to the miner, like typing in its window."""
+    return await send_command(rig, "miner_keys", {"keys": k.keys[:32]})
+
+
 @app.get("/api/rigs")
 def rigs():
     now = time.time()

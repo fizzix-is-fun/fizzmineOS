@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Miner console</title>
 <style>
-  :root { --bg:#0b0d10; --panel:#181b22; --line:#2a2f3a; --text:#d8dbe0; --quiet:#8b93a3; --good:#3ecf8e; --bad:#f05252; }
+  :root { --bg:#0b0d10; --panel:#181b22; --line:#2a2f3a; --text:#d8dbe0; --quiet:#8b93a3; --good:#3ecf8e; --bad:#f05252; --accent:#5aa9ff; }
   * { box-sizing:border-box; }
   html, body { height:100%; }
   body { margin:0; background:var(--bg); color:var(--text); font:14px/1.4 system-ui, sans-serif; display:flex; flex-direction:column; }
@@ -14,12 +14,16 @@
   .dot { width:9px; height:9px; border-radius:50%; background:var(--bad); }
   .dot.on { background:var(--good); }
   #status { color:var(--quiet); font-size:12px; }
-  label { color:var(--quiet); font-size:12px; margin-left:auto; display:flex; gap:4px; align-items:center; }
-  pre { flex:1; margin:0; padding:10px 16px; overflow:auto; font:12.5px/1.35 ui-monospace, Menlo, Consolas, monospace; white-space:pre-wrap; word-break:break-all; }
-  /* the 16 terminal colors, readable on a dark background */
-  .c30{color:#6b7280}.c31{color:#f87171}.c32{color:#4ade80}.c33{color:#facc15}.c34{color:#60a5fa}.c35{color:#e879f9}.c36{color:#22d3ee}.c37{color:#e5e7eb}
-  .c90{color:#9ca3af}.c91{color:#fca5a5}.c92{color:#86efac}.c93{color:#fde68a}.c94{color:#93c5fd}.c95{color:#f0abfc}.c96{color:#67e8f9}.c97{color:#fff}
-  .bold{font-weight:700}
+  nav { margin-left:auto; display:flex; gap:4px; }
+  nav button { background:none; border:1px solid transparent; color:var(--quiet); padding:3px 9px; border-radius:6px; cursor:pointer; font:inherit; font-size:13px; }
+  nav button.on { color:var(--text); border-color:var(--line); background:var(--bg); }
+  label { color:var(--quiet); font-size:12px; display:flex; gap:4px; align-items:center; }
+  pre { flex:1; margin:0; padding:10px 16px; overflow:auto; font:13px/1.3 ui-monospace, Menlo, Consolas, monospace; outline:none; }
+  #screen { white-space:pre; }
+  #screen:focus { box-shadow:inset 0 0 0 1px var(--accent); }
+  #log { white-space:pre-wrap; word-break:break-all; }
+  .hint { color:var(--quiet); font-size:12px; padding:4px 16px 8px; }
+  [hidden] { display:none !important; }
 </style>
 </head>
 <body>
@@ -27,68 +31,150 @@
   <span class="dot" id="dot"></span>
   <h1 id="title">Miner console</h1>
   <span id="status">connecting…</span>
-  <label><input type="checkbox" id="follow" checked> follow</label>
+  <nav><button data-view="screen" class="on">Screen</button><button data-view="log">Log</button></nav>
+  <label id="followBox" hidden><input type="checkbox" id="follow" checked> follow</label>
 </header>
-<pre id="out"></pre>
+<pre id="screen" tabindex="0"></pre>
+<pre id="log" hidden></pre>
+<div class="hint" id="hint">Click the screen and type: your keys go to the miner, like in its own window (for WildRig, h shows the help). Stop it with the Stop miner button.</div>
 <script>
 const rig = new URLSearchParams(location.search).get('rig') || '';
-const out = document.getElementById('out'), status = document.getElementById('status'), dot = document.getElementById('dot');
-const follow = document.getElementById('follow');
-const MAX_CHUNKS = 1500;  // keep the page light; the oldest output drops off the top
+const $ = id => document.getElementById(id);
+const screenEl = $('screen'), logEl = $('log'), status = $('status'), dot = $('dot'), follow = $('follow');
+const api = `/api/rigs/${encodeURIComponent(rig)}`;
 document.title = `${rig} miner`;
-document.getElementById('title').textContent = `${rig} · miner`;
+$('title').textContent = `${rig} · miner`;
 
+// --- terminal colours (ESC[...m) to styled spans; other escape codes are dropped
+const BASE = ['#1f2329', '#f87171', '#4ade80', '#facc15', '#60a5fa', '#e879f9', '#22d3ee', '#e5e7eb',
+              '#6b7280', '#fca5a5', '#86efac', '#fde68a', '#93c5fd', '#f0abfc', '#67e8f9', '#ffffff'];
+function xterm256(n) {
+  if (n < 16) return BASE[n];
+  if (n >= 232) { const v = 8 + (n - 232) * 10; return `rgb(${v},${v},${v})`; }
+  n -= 16;
+  const c = v => v ? 55 + v * 40 : 0;
+  return `rgb(${c(Math.floor(n / 36))},${c(Math.floor(n / 6) % 6)},${c(n % 6)})`;
+}
 const esc = s => s.replace(/[&<>]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;'}[c]));
 
-// terminal colour codes (ESC[..m) to spans; other escape codes are dropped
-let open = '';
-function ansi(text) {
-  let html = open ? `<span class="${open}">` : '';
-  const parts = text.split(/\x1b\[([0-9;]*)([A-Za-z])/);
-  for (let i = 0; i < parts.length; i += 3) {
-    html += esc(parts[i]);
-    if (i + 2 >= parts.length || parts[i + 2] !== 'm') continue;
-    let cls = open.split(' ').filter(Boolean);
-    for (const n of (parts[i + 1] || '0').split(';').map(Number)) {
-      if (n === 0) cls = [];
-      else if (n === 1) cls.push('bold');
-      else if ((n >= 30 && n <= 37) || (n >= 90 && n <= 97)) cls = cls.filter(c => c === 'bold').concat('c' + n);
-      else if (n === 39) cls = cls.filter(c => c === 'bold');
+function Ansi() {
+  let st = {};
+  const style = () => {
+    let fg = st.fg, bg = st.bg;
+    if (st.inv) { [fg, bg] = [bg || 'var(--bg)', fg || 'var(--text)']; }
+    const css = [fg && `color:${fg}`, bg && `background:${bg}`, st.bold && 'font-weight:700', st.dim && 'opacity:.7', st.ul && 'text-decoration:underline'];
+    return css.filter(Boolean).join(';');
+  };
+  return function render(text) {
+    let html = '', cur = style();
+    if (cur) html += `<span style="${cur}">`;
+    const parts = text.split(/\x1b\[([0-9;?]*)([A-Za-z])/);
+    for (let i = 0; i < parts.length; i += 3) {
+      html += esc(parts[i].replace(/\x1b[()][A-Za-z0-9]|\x1b./g, ''));
+      if (i + 2 >= parts.length || parts[i + 2] !== 'm') continue;
+      const n = (parts[i + 1] || '0').split(';').map(Number);
+      for (let j = 0; j < n.length; j++) {
+        const c = n[j];
+        if (c === 0) st = {};
+        else if (c === 1) st.bold = true;
+        else if (c === 2) st.dim = true;
+        else if (c === 4) st.ul = true;
+        else if (c === 7) st.inv = true;
+        else if (c === 22) st.bold = st.dim = false;
+        else if (c === 24) st.ul = false;
+        else if (c === 27) st.inv = false;
+        else if (c >= 30 && c <= 37) st.fg = BASE[c - 30];
+        else if (c >= 90 && c <= 97) st.fg = BASE[c - 82];
+        else if (c >= 40 && c <= 47) st.bg = BASE[c - 40];
+        else if (c >= 100 && c <= 107) st.bg = BASE[c - 92];
+        else if (c === 39) st.fg = null;
+        else if (c === 49) st.bg = null;
+        else if ((c === 38 || c === 48) && n[j + 1] === 5) { st[c === 38 ? 'fg' : 'bg'] = xterm256(n[j + 2]); j += 2; }
+        else if ((c === 38 || c === 48) && n[j + 1] === 2) { st[c === 38 ? 'fg' : 'bg'] = `rgb(${n[j + 2]},${n[j + 3]},${n[j + 4]})`; j += 4; }
+      }
+      const next = style();
+      if (next !== cur) { if (cur) html += '</span>'; if (next) html += `<span style="${next}">`; cur = next; }
     }
-    if (open) html += '</span>';
-    open = cls.join(' ');
-    if (open) html += `<span class="${open}">`;
-  }
-  return html + (open ? '</span>' : '');
+    return html + (cur ? '</span>' : '');
+  };
 }
 
-let offset = null, stopped = false;
-async function poll() {
+let view = 'screen';
+function setStatus(running, text) {
+  dot.classList.toggle('on', !!running);
+  status.textContent = text;
+}
+
+// --- Screen: the miner's terminal as it is now
+async function pollScreen() {
+  if (view !== 'screen') return;
   try {
-    const r = await fetch(`/api/rigs/${encodeURIComponent(rig)}/log` + (offset == null ? '' : `?offset=${offset}`));
-    if (r.status === 401) { status.textContent = 'log in on the dashboard first, then reload'; return; }
+    const r = await fetch(`${api}/screen`);
+    if (r.status === 401) return setStatus(false, 'log in on the dashboard first, then reload');
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || r.statusText);
+    setStatus(d.running, d.running ? 'miner running' : 'miner stopped');
+    screenEl.innerHTML = d.screen == null ? '<span style="color:var(--quiet)">The miner isn\'t running. Start it from the dashboard, or see the Log tab for its last output.</span>'
+                                          : Ansi()(d.screen.replace(/\n+$/, ''));
+  } catch (e) {
+    setStatus(false, `can't reach ${rig}: ${e.message}`);
+  }
+}
+
+const KEYS = {Enter: 'Enter', Escape: 'Escape', Tab: 'Tab', Backspace: 'BSpace', ArrowUp: 'Up', ArrowDown: 'Down',
+              ArrowLeft: 'Left', ArrowRight: 'Right', PageUp: 'PageUp', PageDown: 'PageDown', Home: 'Home', End: 'End', ' ': 'Space'};
+screenEl.addEventListener('keydown', async e => {
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  const key = KEYS[e.key] || (e.key.length === 1 ? e.key : null);
+  if (!key) return;
+  e.preventDefault();
+  const r = await fetch(`${api}/keys`, {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({keys: [key]})});
+  const d = await r.json().catch(() => ({}));
+  if (!d.ok) setStatus(false, d.msg || 'key not sent');
+  setTimeout(pollScreen, 250);
+});
+
+// --- Log: everything the miner printed, following new lines
+let offset = null;
+const ansiLog = Ansi();
+async function pollLog() {
+  if (view !== 'log') return;
+  try {
+    const r = await fetch(`${api}/log` + (offset == null ? '' : `?offset=${offset}`));
+    if (r.status === 401) return setStatus(false, 'log in on the dashboard first, then reload');
     const d = await r.json();
     if (!r.ok) throw new Error(d.detail || r.statusText);
     offset = d.offset;
-    dot.classList.toggle('on', d.running);
-    status.textContent = d.running ? 'miner running' : 'miner stopped';
+    setStatus(d.running, d.running ? 'miner running' : 'miner stopped');
     if (d.text) {
-      // progress lines rewrite themselves with \r; show each as its own line
+      // the log holds the miner's raw screen output: keep the colours, drop cursor moves, one line per \r
       const chunk = document.createElement('span');
-      chunk.innerHTML = ansi(d.text.replace(/\r\n/g, '\n').replace(/\r/g, '\n'));
-      out.appendChild(chunk);
-      while (out.childNodes.length > MAX_CHUNKS) out.firstChild.remove();
-      if (follow.checked) out.scrollTop = out.scrollHeight;
+      chunk.innerHTML = ansiLog(d.text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').replace(/\n{3,}/g, '\n\n'));
+      logEl.appendChild(chunk);
+      while (logEl.childNodes.length > 1500) logEl.firstChild.remove();
+      if (follow.checked) logEl.scrollTop = logEl.scrollHeight;
     }
   } catch (e) {
-    dot.classList.remove('on');
-    status.textContent = `can't reach ${rig}: ${e.message}`;
+    setStatus(false, `can't reach ${rig}: ${e.message}`);
   }
-  setTimeout(poll, document.hidden ? 5000 : 1500);
 }
-// scrolling up pauses following; scrolling back to the bottom resumes it
-out.addEventListener('scroll', () => { follow.checked = out.scrollHeight - out.scrollTop - out.clientHeight < 40; });
-poll();
+logEl.addEventListener('scroll', () => { follow.checked = logEl.scrollHeight - logEl.scrollTop - logEl.clientHeight < 40; });
+
+document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
+  view = b.dataset.view;
+  document.querySelectorAll('nav button').forEach(x => x.classList.toggle('on', x === b));
+  screenEl.hidden = $('hint').hidden = view !== 'screen';
+  logEl.hidden = $('followBox').hidden = view !== 'log';
+  (view === 'screen' ? pollScreen : pollLog)();
+  if (view === 'screen') screenEl.focus();
+});
+
+async function loop() {
+  await (view === 'screen' ? pollScreen() : pollLog());
+  setTimeout(loop, document.hidden ? 5000 : view === 'screen' ? 1000 : 1500);
+}
+loop();
+screenEl.focus();
 </script>
 </body>
 </html>

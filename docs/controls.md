@@ -25,7 +25,7 @@ To use it, tick the rigs in the list, leave "start mining" ticked, and click **P
 
 ## Watching the miner
 
-Click **Miner console** on a rig to open its miner output in a new tab, updating every couple of seconds, like the miner window in HiveOS. Scroll up to pause it; scroll back to the bottom to follow again.
+Click **Miner console** on a rig to open the miner's own screen in a new tab, like the miner window in HiveOS or what `mine` used to show. It updates every second. Click it and type to send keys to the miner (for WildRig, `h` shows its help). The **Log** tab has everything the miner printed; scroll up to pause it, and back to the bottom to follow again.
 
 The miner runs in a tmux session on the rig, so you can also watch it there:
 

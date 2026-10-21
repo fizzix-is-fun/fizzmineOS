@@ -171,6 +171,10 @@ class Agent:
             out = read_log(args.get("offset"), path=self.log_path)
             out["running"] = self.runner.running()
             return out
+        if cmd == "miner_screen":
+            return {"screen": self.runner.screen(), "running": self.runner.running()}
+        if cmd == "miner_keys":
+            return self.runner.send_keys(list(args.get("keys") or []))
         if cmd == "reboot":
             if not self.fake:
                 subprocess.Popen(["bash", "-c", "sleep 2; systemctl reboot"])
@@ -204,7 +208,7 @@ async def run(cfg, agent):
     busy = asyncio.Lock()  # one rig-changing command at a time
 
     async def do_command(ws, msg):
-        quiet = msg.get("cmd") == "miner_log"  # the console asks every couple of seconds
+        quiet = msg.get("cmd") in ("miner_log", "miner_screen", "miner_keys")  # the console, every second or so
         if not quiet:
             log.info("command %s %s", msg.get("cmd"), msg.get("args"))
         try:

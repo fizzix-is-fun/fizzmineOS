@@ -15,6 +15,9 @@ log = logging.getLogger("fizzagent")
 MINERS_DIR = Path("/opt/fizzmine/miners")
 LOG_FILE = Path("/var/log/fizzmine/miner.log")
 SESSION = "miner"
+SCREEN = (120, 40)  # columns, rows of the miner's terminal
+# keys the console may send besides plain characters (Ctrl+C is left to the Stop miner button)
+KEY_NAMES = {"Enter", "Escape", "Tab", "BSpace", "Up", "Down", "Left", "Right", "PageUp", "PageDown", "Home", "End", "Space"}
 LOG_KEEP = 20_000_000  # bytes; on start a bigger log moves to miner.log.1
 
 # Built-in miners: which file to run and how a flight sheet becomes its arguments.
@@ -121,10 +124,31 @@ class MinerRunner:
         LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
         if LOG_FILE.exists() and LOG_FILE.stat().st_size > LOG_KEEP:
             LOG_FILE.replace(LOG_FILE.with_suffix(".log.1"))
-        line = f"cd {shlex.quote(str(binary.parent))} && {shlex.join(cmd)} 2>&1 | tee -a {LOG_FILE}"
-        subprocess.run(["tmux", "new-session", "-d", "-s", SESSION, "-x", "200", "-y", "50", "bash", "-c", line], check=True)
+        # the miner gets a real terminal (so it draws its own screen, as on HiveOS); tmux copies what it prints
+        # to the log. The short sleep lets pipe-pane attach before the miner's first line.
+        line = f"sleep 0.5; cd {shlex.quote(str(binary.parent))} && exec {shlex.join(cmd)}"
+        cols, rows = SCREEN
+        subprocess.run(["tmux", "new-session", "-d", "-s", SESSION, "-x", str(cols), "-y", str(rows), "bash", "-c", line], check=True)
+        subprocess.run(["tmux", "pipe-pane", "-o", "-t", SESSION, f"cat >> {shlex.quote(str(LOG_FILE))}"], check=True)
         log.info("miner started: %s", shlex.join(cmd))
         return "started"
+
+    def screen(self):
+        """What the miner's terminal shows right now, with its colours; None when it isn't running."""
+        if self.fake:
+            return FAKE_SCREEN if self._fake_running else None
+        r = subprocess.run(["tmux", "capture-pane", "-p", "-e", "-t", SESSION], capture_output=True, text=True)
+        return r.stdout if r.returncode == 0 else None
+
+    def send_keys(self, keys):
+        for k in keys:
+            if not (k in KEY_NAMES or (len(k) == 1 and k.isprintable())):
+                raise ValueError(f"key not allowed: {k!r}")
+        if self.fake or not self.running():
+            return "sent" if self.fake else "miner not running"
+        for k in keys:
+            subprocess.run(["tmux", "send-keys", "-t", SESSION] + (["-l", k] if k not in KEY_NAMES else [k]), check=True)
+        return "sent"
 
     def stop(self):
         if self.fake:
@@ -154,3 +178,13 @@ def read_log(offset=None, path=None, tail=64_000, chunk=256_000):
         f.seek(offset)
         data = f.read(chunk)
     return {"text": data.decode("utf-8", "replace"), "offset": offset + len(data)}
+
+
+FAKE_SCREEN = """\x1b[1;36m WildRig 1.0.0l\x1b[0m  pearlhash  pool.pearlhash.xyz:9000
+\x1b[7m GPU   Hashrate     Temp  Fan   Power  A/R    \x1b[0m
+ #0    \x1b[32m93.7 TH/s\x1b[0m    64C   42%   112W   41/0
+ #1    \x1b[32m93.6 TH/s\x1b[0m    59C   36%   107W   38/0
+ Total \x1b[1;32m187.3 TH/s\x1b[0m                   219W   79/0
+
+\x1b[33m[share] accepted\x1b[0m 38 ms   \x1b[90mpress h for help\x1b[0m
+"""

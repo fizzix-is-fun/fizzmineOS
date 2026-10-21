@@ -13,13 +13,15 @@ import tomllib
 import websockets
 
 from .gpu import FakeGpus, NvmlGpus
-from .miner import FakeMiner, WildRig
+from .miner import FakeMiner, WildRig, attach_to_gpus
 
 log = logging.getLogger("fizzagent")
 
 
 def snapshot(rig, gpus, miner):
-    return {"type": "stats", "rig": rig, "ts": time.time(), "gpus": gpus.read(), "miner": miner.read()}
+    cards, stats = gpus.read(), miner.read()
+    attach_to_gpus(cards, stats)
+    return {"type": "stats", "rig": rig, "ts": time.time(), "gpus": cards, "miner": stats}
 
 
 async def run(cfg, fake):

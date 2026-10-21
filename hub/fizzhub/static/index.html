@@ -64,7 +64,8 @@ function rigCard(r, hist) {
     <td class="wide">${fmt(g.core_mhz)} MHz</td>
     <td class="wide">${fmt(g.mem_mhz)} MHz</td>
     <td class="wide">${fmt(g.vram_used_mb / 1024, 1)} / ${fmt(g.vram_total_mb / 1024, 0)} GB</td>
-    <td>${mining ? ths((m.card_hashrate_hs || [])[i]) : '–'}</td></tr>`).join('');
+    <td>${mining ? ths(g.hashrate_hs ?? (m.card_hashrate_hs || [])[i]) : '–'}</td>
+    <td>${mining && g.shares_accepted != null ? `${g.shares_accepted} / ${g.shares_rejected ?? 0}` : '–'}</td></tr>`).join('');
   return `<section class="rig">
     <div class="rig-head">
       <span class="dot ${r.online ? 'on' : ''}" title="${r.online ? 'online' : 'offline'}"></span>
@@ -75,7 +76,7 @@ function rigCard(r, hist) {
       <span class="stat">Efficiency <b>${eff}</b></span>
       <span class="stat">Shares <b>${m.running ? `${fmt(m.shares_accepted)} / ${fmt(m.shares_rejected)} rej` : '–'}</b></span>
     </div>
-    ${r.gpus.length ? `<table><thead><tr><th>GPU</th><th>Temp</th><th>Fan</th><th>Power</th><th class="wide">Core</th><th class="wide">Mem</th><th class="wide">VRAM</th><th>Hashrate</th></tr></thead><tbody>${rows}</tbody></table>`
+    ${r.gpus.length ? `<table><thead><tr><th>GPU</th><th>Temp</th><th>Fan</th><th>Power</th><th class="wide">Core</th><th class="wide">Mem</th><th class="wide">VRAM</th><th>Hashrate</th><th>Shares</th></tr></thead><tbody>${rows}</tbody></table>`
       : '<p class="empty">No reports yet. Install the agent on this rig.</p>'}
     ${spark(hist)}
   </section>`;

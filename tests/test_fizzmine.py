@@ -95,3 +95,26 @@ def test_installer_and_agent_bundle(client):
     names = tarfile.open(fileobj=io.BytesIO(client.get("/agent.tar.gz").content)).getnames()
     assert "agent/fizzagent/__main__.py" in names and "agent/requirements.txt" in names
     assert not any("__pycache__" in n for n in names)
+
+
+# captured from WildRig-NG 1.0.0l on babyarmadilloai (2x RTX 5060 Ti), 2026-10-21
+WILDRIG_NG = {"algo": "pearlhash", "connection": {"error_log": [], "failures": 0, "ping": 376, "pool": "pool.pearlhash.xyz:9000", "uptime": 465}, "donate_level": 0, "hashrate": {"threads": [[89044043115986, 89043485055611, 0], [87668518888619, 87635445107966, 0]], "total": [176712562004605, 176678930163577, 0]}, "hwmon": {"busID": [1, 3], "cclk": [2550, 2550], "fan": [48, 36], "mclk": [810, 810], "power": [96, 94], "temp": [65, 58]}, "id": "4e8b610a77c6d4f3", "kind": "wildrig-ng", "results": {"avg_time": 0, "best": [], "diff_current": 36028797018963968, "error_log": [], "hashes_total": 0, "shares_accepted": [2, 3], "shares_good": 5, "shares_ignored": [0, 0], "shares_rejected": [0, 0], "shares_total": 5}, "ua": "WildRig/1.0.0l", "uptime": 466, "version": "1.0.0l", "worker_id": "babyarmadilloai"}
+
+
+def test_parse_real_wildrig_ng():
+    from fizzagent.miner import attach_to_gpus
+    m = parse_wildrig(WILDRIG_NG)
+    assert m["miner"] == "wildrig-ng" and m["pool"] == "pool.pearlhash.xyz:9000"
+    assert m["hashrate_hs"] == 176712562004605 and m["shares_accepted"] == 5 and m["shares_rejected"] == 0
+    # NVML lists the cards in its own order; the miner's numbers must follow the PCI bus
+    gpus = [{"index": 0, "bus_id": "00000000:03:00.0"}, {"index": 1, "bus_id": "00000000:01:00.0"}]
+    attach_to_gpus(gpus, m)
+    assert gpus[0]["hashrate_hs"] == 87668518888619 and gpus[0]["shares_accepted"] == 3
+    assert gpus[1]["hashrate_hs"] == 89044043115986 and gpus[1]["shares_rejected"] == 0
+
+
+def test_attach_skips_cards_the_miner_does_not_use():
+    from fizzagent.miner import attach_to_gpus
+    gpus = [{"index": 0, "bus_id": "00000000:05:00.0"}]
+    attach_to_gpus(gpus, parse_wildrig(WILDRIG_NG))
+    assert "hashrate_hs" not in gpus[0]

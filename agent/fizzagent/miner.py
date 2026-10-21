@@ -13,16 +13,41 @@ def parse_wildrig(data):
     total_shares = results.get("shares_total")
     return {
         "running": True,
-        "miner": "wildrig",
+        "miner": data.get("kind") or "wildrig",
         "version": data.get("version"),
         "algo": data.get("algo"),
+        "pool": (data.get("connection") or {}).get("pool"),
         "hashrate_hs": total[0],
-        # one entry per card, in the miner's device order
+        # per card, in the miner's device order; card_bus says which PCI bus each one is on
         "card_hashrate_hs": [t[0] if t else None for t in threads],
+        "card_bus": (data.get("hwmon") or {}).get("busID") or [],
+        "card_accepted": results.get("shares_accepted") or [],
+        "card_rejected": results.get("shares_rejected") or [],
         "shares_accepted": good,
         "shares_rejected": total_shares - good if None not in (good, total_shares) else None,
         "uptime_s": data.get("uptime") or (data.get("connection") or {}).get("uptime"),
     }
+
+
+def attach_to_gpus(gpus, miner):
+    """Copies the miner's per-card numbers onto the matching NVML cards, matched by PCI bus
+    (miner order and NVML order can differ on multi-card boards), else by position."""
+    if not miner.get("running"):
+        return
+    buses = miner.get("card_bus") or []
+    for g in gpus:
+        try:
+            bus = int(g["bus_id"].split(":")[1], 16)
+        except (AttributeError, IndexError, KeyError, ValueError):
+            bus = None
+        i = buses.index(bus) if bus in buses else (g["index"] if not buses else None)
+        if i is None:
+            continue
+        for src, dst in (("card_hashrate_hs", "hashrate_hs"), ("card_accepted", "shares_accepted"),
+                         ("card_rejected", "shares_rejected")):
+            vals = miner.get(src) or []
+            if i < len(vals):
+                g[dst] = vals[i]
 
 
 class WildRig:
@@ -46,8 +71,12 @@ class FakeMiner:
             "miner": "wildrig",
             "version": "fake",
             "algo": "pearlhash",
+            "pool": "pool.pearlhash.xyz:9000",
             "hashrate_hs": sum(cards),
             "card_hashrate_hs": cards,
+            "card_bus": [1, 2],
+            "card_accepted": [60, 60],
+            "card_rejected": [0, 0],
             "shares_accepted": 120,
             "shares_rejected": 0,
             "uptime_s": 3600,

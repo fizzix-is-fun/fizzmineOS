@@ -37,6 +37,23 @@ die() { printf '\n\033[1;31mERROR: %s\033[0m\n' "$*"; exit 1; }
 OS_ID=$(. /etc/os-release; echo "$ID")  # in a subshell: os-release sets NAME, which would clobber ours
 [ "$OS_ID" = ubuntu ] || die "this installer is for Ubuntu (found $OS_ID)"
 
+# A wrong clock (common on fresh installs and old boards with dead CMOS batteries)
+# makes apt reject the package lists as "not valid yet".
+sync_clock() {
+  timedatectl set-ntp true 2>/dev/null || true
+  systemctl restart systemd-timesyncd 2>/dev/null || true
+  for _ in $(seq 1 15); do
+    [ "$(timedatectl show -p NTPSynchronized --value 2>/dev/null)" = yes ] && return
+    sleep 2
+  done
+  local web
+  web=$(curl -fsSI --max-time 10 https://www.google.com 2>/dev/null | grep -i '^date:' | cut -d' ' -f2- | tr -d '\r' || true)
+  if [ -n "$web" ] && date -s "$web" >/dev/null; then echo "  clock set from the web: $(date)"; fi
+}
+
+say "Checking the clock"
+sync_clock
+
 say "Installing base packages"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -q

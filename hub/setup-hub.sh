@@ -52,7 +52,7 @@ apt-get install -y -q git curl ca-certificates openssl >/dev/null
 if ! docker compose version >/dev/null 2>&1; then
   say "Installing Docker"
   # Ubuntu's own packages: no extra repo or download site to reach
-  apt-get install -y -q docker.io docker-compose-v2 >/dev/null
+  apt-get install -y -q docker.io docker-compose-v2 docker-buildx >/dev/null
   systemctl enable --now docker
 fi
 

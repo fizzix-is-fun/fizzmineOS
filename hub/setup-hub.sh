@@ -45,7 +45,8 @@ sync_clock
 
 say "Installing base packages"
 export DEBIAN_FRONTEND=noninteractive
-apt-get update -q
+# one stale mirror (e.g. "not valid yet") shouldn't stop the install; the packages come from the others
+apt-get update -q || echo "  (apt update reported a problem above; continuing)"
 apt-get install -y -q git curl ca-certificates openssl >/dev/null
 
 if ! command -v docker >/dev/null; then

@@ -56,7 +56,8 @@ sync_clock
 
 say "Installing base packages"
 export DEBIAN_FRONTEND=noninteractive
-apt-get update -q
+# one stale mirror (e.g. "not valid yet") shouldn't stop the install; the packages come from the others
+apt-get update -q || echo "  (apt update reported a problem above; continuing)"
 apt-get install -y -q python3 python3-venv tmux curl pciutils ubuntu-drivers-common >/dev/null
 python3 -c 'import sys; sys.exit(sys.version_info < (3, 11))' || die "needs Python 3.11+ (Ubuntu 24.04 or newer)"
 

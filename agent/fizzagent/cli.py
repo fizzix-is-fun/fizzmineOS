@@ -97,7 +97,7 @@ def main(argv=None):
     oc.add_argument("gpu", nargs="?", help="GPU number, or all")
     for o in OPTS:
         oc.add_argument("--" + o.replace("_", "-"), type=int)
-    oc.add_argument("--fan", help="auto, a % like 70, or a target temperature like t65")
+    oc.add_argument("--fan", help="auto, a fixed percent like 70, or a target temperature like t65")
     oc.add_argument("--reset", action="store_true", help="back to stock")
     a = p.parse_args(argv)
     path = a.socket

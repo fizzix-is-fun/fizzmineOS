@@ -13,7 +13,7 @@ DEFAULTS = {
     "grace_s": 300,                # time a miner gets to start hashing
     "low_for_s": 180,              # how long the hashrate must stay low before acting
     "restarts_before_reboot": 2,
-    "temp_limit_c": 85,
+    "temp_limit_c": 80,
     "temp_resume_c": 65,
 }
 REBOOT_GUARD_S = 3600

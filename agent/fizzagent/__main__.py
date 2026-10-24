@@ -99,6 +99,7 @@ class Agent:
             "agent": {"mode": self.state["mode"], "flight_sheet": fs.get("name") if fs else None,
                       "miner_running": self.runner.running(), "ai": self.state["ai"],
                       "gpu_error": getattr(self.gpus, "error", None),
+                      "driver": getattr(self.gpus, "driver", None),
                       "watchdog": {**self.watchdog.settings, "status": self.watchdog.status}},
         }
 

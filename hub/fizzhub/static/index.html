@@ -222,7 +222,7 @@ function rigCard(r, hist) {
       <button class="b" data-ai="${esc(r.rig)}">AI mode settings</button>
       <button class="b" data-wd="${esc(r.rig)}">Watchdog</button>
       ${btn(r.rig, 'reboot', 'Reboot', 'danger')}
-      <span class="hint">Flight sheet: ${a.flight_sheet ? esc(a.flight_sheet) : 'none yet (push one from Flight sheets)'}</span>
+      <span class="hint">Flight sheet: ${a.flight_sheet ? esc(a.flight_sheet) : 'none yet (push one from Flight sheets)'}</span>${a.driver ? `<span class="hint">· driver ${esc(a.driver)}</span>` : ''}
     </div>` : '';
   return `<section class="rig">
     <div class="rig-head">

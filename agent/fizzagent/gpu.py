@@ -42,7 +42,7 @@ def card_brand(bus_id):
 
 class NvmlGpus:
     def __init__(self):
-        self.handles, self.fixed, self.error = [], [], None
+        self.handles, self.fixed, self.error, self.driver = [], [], None, None
         self.connect()
 
     def connect(self):
@@ -54,6 +54,7 @@ class NvmlGpus:
             self.error = f"NVIDIA driver not loaded ({e})"
             return
         self.error = None
+        self.driver = _try(nv.nvmlSystemGetDriverVersion)
         # things that don't change while the agent runs
         self.fixed = [{
             "brand": card_brand(_try(lambda: nv.nvmlDeviceGetPciInfo(h).busId)),

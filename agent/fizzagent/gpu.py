@@ -118,8 +118,11 @@ class NvmlGpus:
         do("core lock", lambda: nv.nvmlDeviceSetGpuLockedClocks(h, core, core) if core else nv.nvmlDeviceResetGpuLockedClocks(h))
         mem = oc.get("mem_lock_mhz")
         do("mem lock", lambda: nv.nvmlDeviceSetMemoryLockedClocks(h, mem, mem) if mem else nv.nvmlDeviceResetMemoryLockedClocks(h))
-        do("core offset", lambda: nv.nvmlDeviceSetGpcClkVfOffset(h, int(oc.get("core_offset_mhz") or 0)))
-        do("mem offset", lambda: nv.nvmlDeviceSetMemClkVfOffset(h, int(oc.get("mem_offset_mhz") or 0)))
+        # a blank offset is left alone, so a miner's own offset (WildRig's --gpu-core-offset) survives; {} is back to stock
+        for field, key, fn in (("core offset", "core_offset_mhz", nv.nvmlDeviceSetGpcClkVfOffset),
+                               ("mem offset", "mem_offset_mhz", nv.nvmlDeviceSetMemClkVfOffset)):
+            if oc.get(key) is not None or not oc:
+                do(field, lambda fn=fn, key=key: fn(h, int(oc.get(key) or 0)))
         return errors
 
     def temp(self, i):
@@ -144,7 +147,8 @@ class FakeGpus:
         self.fan = [None for _ in names]
 
     def apply_oc(self, i, oc):
-        self.oc[i] = dict(oc)
+        offsets = {k: self.oc[i][k] for k in ("core_offset_mhz", "mem_offset_mhz") if oc and k in self.oc[i]}
+        self.oc[i] = {**offsets, **oc}
         return []
 
     def temp(self, i):

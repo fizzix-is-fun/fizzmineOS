@@ -429,3 +429,17 @@ def test_power_limit_clamped_to_the_card_range(monkeypatch):
     assert g.apply_oc(0, {"power_w": 140}) == ["power: 140 W is outside this card's 150-180 W, set 150 W"]
     assert g.apply_oc(0, {"power_w": 160}) == [] and g.apply_oc(0, {}) == []
     assert calls == [150000, 160000, 180000]
+
+
+def test_blank_offset_leaves_the_miners_offset(tmp_path):
+    a = make_agent(tmp_path)
+    u0 = a.cards()[0]
+    a.handle("flight_sheet", {"flight_sheet": FS, "start": True})
+    a.gpus.oc[0] = {"core_offset_mhz": 600}  # what WildRig's --gpu-core-offset 600 set
+    a.handle("set_oc", {"cards": {u0: {"core_lock_mhz": 2000}}})
+    assert a.gpus.oc[0] == {"core_offset_mhz": 600, "core_lock_mhz": 2000}
+    # an offset we set and then blank goes back to 0
+    a.handle("set_oc", {"cards": {u0: {"core_lock_mhz": 2000, "core_offset_mhz": 300}}})
+    assert a.gpus.oc[0]["core_offset_mhz"] == 300
+    a.handle("set_oc", {"cards": {u0: {"core_lock_mhz": 2000}}})
+    assert a.gpus.oc[0]["core_offset_mhz"] == 0

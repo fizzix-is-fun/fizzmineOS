@@ -165,6 +165,7 @@ class Agent:
 
     def handle(self, cmd, args):
         if cmd == "set_oc":
+            before = {u: dict(oc) for u, oc in self.state["oc"].items()}
             for uuid, oc in (args.get("cards") or {}).items():
                 if oc is None:
                     self.state["oc"].pop(uuid, None)
@@ -178,6 +179,11 @@ class Agent:
                 if u in (args.get("cards") or {}) and args["cards"][u] is None:
                     self.gpus.apply_oc(i, {})
                     self.fans.tick({i: {"fan_mode": "auto"}})
+                # an offset that was set and is now blank goes back to 0 once; after that the miner may set its own
+                dropped = {k: 0 for k in ("core_offset_mhz", "mem_offset_mhz")
+                           if k in before.get(u, {}) and k not in self.state["oc"].get(u, {})}
+                if dropped and u in self.state["oc"]:
+                    self.gpus.apply_oc(i, {**self.state["oc"][u], **dropped})
             errors = self.apply_saved_oc()
             return "applied" + (": " + "; ".join(errors) if errors else "")
         if cmd == "flight_sheet":

@@ -37,7 +37,7 @@ The log is also written to `/var/log/fizzmine/miner.log`. When it passes 20 MB, 
 
 ## Overclocking
 
-Click **Overclock** on a rig. For each card you can set the power limit (W), a core clock lock, a core offset, a memory lock, a memory offset, and the fans: auto, a fixed %, or a target temperature that the agent holds by adjusting the fans every few seconds (fans go to 100% at 85 °C). A blank field means stock. **Copy to all** copies one card's row to every card on that rig.
+Click **Overclock** on a rig. For each card you can set the power limit (W), a core clock lock, a core offset, a memory lock, a memory offset, and the fans: auto, a fixed %, or a target temperature that the agent holds by adjusting the fans every few seconds (fans go to 100% at 85 °C). A blank field means stock, except offsets: a blank offset leaves whatever the miner sets (for example WildRig's `--gpu-core-offset`), and 0 resets it. **Copy to all** copies one card's row to every card on that rig.
 
 OC is applied while the rig is mining. Switching to AI mode or stopping the miner puts the cards back to stock clocks and automatic fans.
 

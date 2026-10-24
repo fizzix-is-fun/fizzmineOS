@@ -300,7 +300,7 @@ function openOc(rigName) {
   const d = $('#ocDialog');
   d.innerHTML = `<form method="dialog" id="ocForm">
     <h2>Overclock · ${esc(rigName)}</h2>
-    <p class="hint">Blank means stock. Offsets in MHz; 0 or blank resets. Fan: auto, fixed % or a target temperature. Saved on the rig and re-applied after reboots; applies now if the rig is mining.</p>
+    <p class="hint">Blank means stock. Offsets in MHz; 0 resets, blank leaves the miner's own offset alone. Fan: auto, fixed % or a target temperature. Saved on the rig and re-applied after reboots; applies now if the rig is mining.</p>
     <div class="scroll"><table><thead><tr><th>GPU</th>${OC_FIELDS.map(([, l]) => `<th>${l}</th>`).join('')}<th>Fan</th><th></th></tr></thead><tbody>
     ${r.gpus.map(g => `<tr data-uuid="${esc(g.uuid)}"><td>${g.index}: ${esc(model(g.name))}</td>${ocInputs(g.oc || {}, g.uuid + ':')}
       <td><button class="b" type="button" data-copy="${esc(g.uuid)}" title="Copy this row to every card">Copy to all</button></td></tr>`).join('')}
